@@ -1,6 +1,9 @@
 import os
+import json
 import logging
 import platform
+import time
+
 import paho.mqtt.client as mqtt
 
 
@@ -33,7 +36,8 @@ class PC2MQTT:
 
         self._logger.info(f"System info: {self._platform} / {self._node}")
         self.client.connect(host=host, port=port, keepalive=keepalive)
-        self.client.loop_forever()
+        self.client.loop_start()
+        self.publish()
 
     def on_connect(self, client, userdata, flags, reason_code):
         topic = f"pc/{self._node}"
@@ -50,6 +54,14 @@ class PC2MQTT:
             self._reboot()
         elif payload == "shutdown":
             self._shutdown()
+
+    def publish(self):
+        while True:
+            time.sleep(5)
+            topic = f"pc/announce"
+            message = json.dumps({"node": self._node, "state": "online"})
+            self._logger.info(f"Sent to {topic}: {message}")
+            self.client.publish(topic, message)
 
     def _reboot(self):
         if self._platform == "windows":
