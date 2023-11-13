@@ -6,11 +6,11 @@ authors = ["Maxim Mityutko"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<3.13"
 paho-mqtt = "1.6.1"
 
 [tool.poetry.dev-dependencies]
-# pyinstaller = "6.1.0"
+pyinstaller = "^6.0.0"
 
 [build-system]
 requires = ["poetry-core"]
