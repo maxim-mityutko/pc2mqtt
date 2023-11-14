@@ -59,8 +59,9 @@ class PC2MQTT:
     def on_message(self, client, userdata, message: mqtt.MQTTMessage):
         self._logger.info(f"{message.topic} {message.payload}")
 
-        payload = message.payload.decode().lower()
-        if payload == "off":
+        payload = message.payload.decode()
+        if payload == "OFF":
+            self.client.publish(topic=self.Topics.STATE.value.format(node=self._node), payload="OFF")
             self._shutdown()
 
     def config(self):
