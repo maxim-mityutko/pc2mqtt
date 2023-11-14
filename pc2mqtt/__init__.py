@@ -3,6 +3,7 @@ import json
 import logging
 import platform
 import time
+from enum import Enum
 
 import paho.mqtt.client as mqtt
 
@@ -23,54 +24,64 @@ class PC2MQTT:
         self.port = port
         self.keepalive = keepalive
 
-        self._platform = platform.system().lower()
-        self._node = platform.node().lower()  # network name
-
         self.client = mqtt.Client()
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
 
-        logging.basicConfig()
-        self._logger = logging.getLogger(__name__)
-        self._logger.setLevel(logging.INFO)
+        self._system = platform.system().lower()
+        self._node = platform.node().lower()  # network name
 
-        self._logger.info(f"System info: {self._platform} / {self._node}")
+        # logging
+        self.logger = self._logger
+        self.logger.info(f"System: {self._system} / Node: {self._node}")
+
         self.client.connect(host=host, port=port, keepalive=keepalive)
-        self.client.loop_start()
-        self.publish()
 
-    def on_connect(self, client, userdata, flags, reason_code):
-        topic = f"pc/{self._node}"
+    @property
+    def _logger(self):
+        logging.basicConfig()
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.INFO)
+        return logger
 
+    class Topics(Enum):
+        CONFIG = "homeassistant/switch/{node}/config"
+        STATE = "homeassistant/switch/{node}/state"
+        COMMAND = "homeassistant/switch/{node}/set"
+
+    def on_connect(self, client: mqtt.Client, userdata, flags, reason_code):
         self._logger.info(f"Connected to MQTT broker with the result: {reason_code}")
+
+        topic = self.Topics.COMMAND.value.format(node=self._node)
         client.subscribe(topic=topic)
-        self._logger.info(f"Subscribed to topic: {topic}")
+        self._logger.info(f"Subscribed to command topic: {topic}")
 
     def on_message(self, client, userdata, message: mqtt.MQTTMessage):
         self._logger.info(f"{message.topic} {message.payload}")
 
         payload = message.payload.decode().lower()
-        if payload == "reboot":
-            self._reboot()
-        elif payload == "shutdown":
+        if payload == "off":
             self._shutdown()
 
-    def publish(self):
-        while True:
-            time.sleep(5)
-            topic = f"pc/announce"
-            message = json.dumps({"node": self._node, "state": "online"})
-            self._logger.info(f"Sent to {topic}: {message}")
-            self.client.publish(topic, message)
+    def config(self):
+        name = f"PC-{self._node.upper()}"
+        message = {
+            "name": name,
+            "command_topic": self.Topics.COMMAND.value.format(node=self._node),
+            "state_topic": self.Topics.STATE.value.format(node=self._node),
+            "unique_id": name,
+            "device": {"identifiers": ["pc"], "name": self._node}
+        }
 
-    def _reboot(self):
-        if self._platform == "windows":
-            os.system("shutdown -r -t 0")
-        elif self._platform == "linux":
-            os.system("shutdown -r now")
+        self.client.publish(topic=self.Topics.CONFIG.value.format(node=self._node), payload=json.dumps(message))
+
+    def state(self):
+        while True:
+            self.client.publish(topic=self.Topics.STATE.value.format(node=self._node), payload="ON")
+            time.sleep(30)
 
     def _shutdown(self):
-        if self._platform == "windows":
+        if self._system == "windows":
             os.system("shutdown -t 0")
-        elif self._platform == "linux":
+        elif self._system == "linux":
             os.system("shutdown now")
