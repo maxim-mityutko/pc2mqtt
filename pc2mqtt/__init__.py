@@ -28,14 +28,15 @@ class PC2MQTT:
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
 
-        self._system = platform.system().lower()
+        self._system = platform.system()
+        self._platform = platform.platform(terse=True, aliased=True)
         self._node = platform.node().lower()  # network name
 
         # logging
         self.logger = self._logger
         self.logger.info(f"System: {self._system} / Node: {self._node}")
-
-        self.client.connect(host=host, port=port, keepalive=keepalive)
+        self.logger.info(f"Connecting to '{self.host}:{self.port}'")
+        self.client.connect(host=self.host, port=self.port, keepalive=self.keepalive)
 
     @property
     def _logger(self):
@@ -65,13 +66,19 @@ class PC2MQTT:
             self._shutdown()
 
     def config(self):
-        name = f"PC-{self._node.upper()}"
+        device_name = f"Computer {self._node.upper()}"
         message = {
-            "name": name,
+            "name": "Switch",
+            # "device_class": "switch",
             "command_topic": self.Topics.COMMAND.value.format(node=self._node),
             "state_topic": self.Topics.STATE.value.format(node=self._node),
-            "unique_id": name,
-            "device": {"identifiers": ["pc"], "name": self._node}
+            "unique_id": f"{device_name.lower().replace(' ','_')}_switch",
+            "device": {
+                "identifiers": [self._node],
+                "name": device_name,
+                "model": self._system,
+                "sw_version": self._platform
+            }
         }
 
         self.client.publish(topic=self.Topics.CONFIG.value.format(node=self._node), payload=json.dumps(message))
