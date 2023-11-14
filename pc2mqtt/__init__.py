@@ -89,7 +89,7 @@ class PC2MQTT:
             time.sleep(30)
 
     def _shutdown(self):
-        if self._system == "windows":
+        if self._system.lower() == "windows":
             os.system("shutdown -t 0")
-        elif self._system == "linux":
+        elif self._system.lower() == "linux":
             os.system("shutdown now")
