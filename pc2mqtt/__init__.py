@@ -90,6 +90,6 @@ class PC2MQTT:
 
     def _shutdown(self):
         if self._system.lower() == "windows":
-            os.system("shutdown /s /t 0")
+            os.system("shutdown /s /p")
         elif self._system.lower() == "linux":
             os.system("shutdown now")
