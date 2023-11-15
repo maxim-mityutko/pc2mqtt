@@ -1,5 +1,5 @@
 # pc2mqtt
-Reboot or shutdown Windown or Linux computer via MQTT
+Reboot or shutdown Windows or Linux computer via MQTT
 
 ## Build
 - Linux / MacOS
