@@ -198,7 +198,7 @@ class IntegrationRegistrationTests(unittest.TestCase):
             pc = PC2MQTT("broker")
         for factory in factories:
             factory.assert_called_once_with(
-                pc.client, pc._node, pc.device, pc.availability_topic, pc.logger,
+                pc.client, pc.device["identifiers"][0], pc.device, pc.availability_topic, pc.logger,
             )
         for _ in range(2):
             pc.on_connect(pc.client, None, None, 0)

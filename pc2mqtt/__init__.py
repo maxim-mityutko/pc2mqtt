@@ -27,26 +27,24 @@ class PC2MQTT:
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
 
-        self._system = platform.system()
-        self._platform = platform.platform(terse=True, aliased=True)
-        self._node = platform.node().lower()  # network name
+        node = platform.node().lower()  # network name
 
         self.device = {
-            "identifiers": [self._node],
-            "name": f"Computer {self._node.upper()}",
-            "model": self._system,
-            "sw_version": self._platform,
+            "identifiers": [node],
+            "name": f"Computer {node.upper()}",
+            "model": platform.system(),
+            "sw_version": platform.platform(terse=True, aliased=True),
         }
-        self.availability_topic = f"pc2mqtt/{self._node}/availability"
+        self.availability_topic = f"pc2mqtt/{node}/availability"
         self.client.will_set(self.availability_topic, payload="offline", retain=True)
 
         # logging
         self.logger = self._logger
         self.integrations = [
-            integration_type(self.client, self._node, self.device, self.availability_topic, self.logger)
+            integration_type(self.client, node, self.device, self.availability_topic, self.logger)
             for integration_type in INTEGRATION_TYPES
         ]
-        self.logger.info(f"System: {self._system} / Node: {self._node}")
+        self.logger.info("System: %s / Node: %s", self.device["model"], node)
         self.logger.info(f"Connecting to '{self.host}:{self.port}'")
         self.client.connect(host=self.host, port=self.port, keepalive=self.keepalive)
 
