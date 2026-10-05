@@ -1,14 +1,22 @@
 # pc2mqtt
-Autodiscover Windows or Linux computer via the MQTT broker in Home Assistant.
-The computer exposes shutdown, sleep, and restart buttons, and an audio
-playback binary sensor.
+
+Expose actions and sensors from Windows or Linux computer via MQTT.
 
 ## Command Line Arguments
+
 - `--host` - ip or hostname of MQTT broker
 - `--port` - port of the MQTT broker (default: 1883)
 - `--keepalive` - interval to send keepalive messages (default: 60)
 
+## Actions and Sensors
+
+- Shutdown
+- Restart
+- Sleep
+- Audio playing
+
 ## Installation
+
 - Windows
   - `Win + R` and open the Autostart location for all users: `shell:common startup`
   - Place the `pc2mqtt.exe` executable in `c:\Program Files (x86)`
@@ -17,6 +25,7 @@ playback binary sensor.
   - Move the shortcut to the `Autostart` location
 
 ## Development and builds
+
 Install Python 3.11 or 3.12, Poetry (CI uses 1.7.0), and GNU Make first.
 On Windows, GNU Make is available through Chocolatey (`choco install make`).
 Linux package builds also require `binutils` and `dpkg-dev`.
@@ -40,6 +49,7 @@ Integration behavior, MQTT topics, and platform requirements are documented in t
 module docstrings: [audio playback](pc2mqtt/audio.py) and [power controls](pc2mqtt/power.py).
 
 ## Adding integrations
+
 Each integration lives in its own module: `AudioSensor` in `pc2mqtt/audio.py` and
 `PowerControls` in `pc2mqtt/power.py`. Add a class to `INTEGRATION_TYPES` in
 `pc2mqtt/integrations.py` to enable it. This replaces the earlier sensor-only registry.
@@ -60,6 +70,7 @@ The application owns the MQTT connection and last will, message dispatch, and
 polling loop. Registration is an explicit tuple of classes.
 
 ## Release builds
+
 Publishing a GitHub release (including a prerelease) runs
 `.github/workflows/release.yml` against its tag and attaches:
 
