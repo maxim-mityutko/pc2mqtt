@@ -15,6 +15,5 @@ c = PC2MQTT(
 )  # connect to broker and subscribe to command channel
 
 c.client.loop_start()
-c.config()  # announce availability through MQTT
 c.state()   # announce state
 c.client.loop_stop()

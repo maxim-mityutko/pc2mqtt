@@ -6,8 +6,9 @@ authors = ["Maxim Mityutko"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.13"
-paho-mqtt = "1.6.1"
+python = ">=3.11,<3.15"
+paho-mqtt = "2.1.0"
+pycaw = { version = "20240210", markers = "sys_platform == 'win32'" }
 
 [tool.poetry.dev-dependencies]
 pyinstaller = "^6.0.0"
