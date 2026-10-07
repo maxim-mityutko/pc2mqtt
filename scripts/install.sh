@@ -32,8 +32,10 @@ while true; do
     printf 'Enter a port between 1 and 65535.\n'
 done
 
+default_display_name=$(uname -n)
+default_display_name=${default_display_name^^}
 while true; do
-    read -r -p 'Display name [hostname]: ' display_name
+    read -r -p "Display name [$default_display_name]: " display_name
     display_name="${display_name#"${display_name%%[![:space:]]*}"}"
     display_name="${display_name%"${display_name##*[![:space:]]}"}"
     [[ ! $display_name =~ [[:cntrl:]] ]] && break

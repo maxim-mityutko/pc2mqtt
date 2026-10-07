@@ -39,7 +39,7 @@ args = sys.argv[1:]
 with open(os.environ['INSTALL_TEST_LOG'], 'a') as log:
     log.write(json.dumps([name, *args]) + '\\n')
 if name == 'uname':
-    print('Linux' if args == ['-s'] else 'x86_64')
+    print({'-s': 'Linux', '-m': 'x86_64', '-n': 'test-desktop'}[args[0]])
 elif name == 'id':
     print(os.environ.get('INSTALL_TEST_UID', '1000'))
 elif name == 'dpkg':

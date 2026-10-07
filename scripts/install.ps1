@@ -25,8 +25,9 @@ do {
     if (-not $validPort) { Write-Host 'Enter a port between 1 and 65535.' }
 } until ($validPort)
 
+$defaultDisplayName = [System.Net.Dns]::GetHostName().ToUpperInvariant()
 do {
-    $displayName = (Read-Host 'Display name [hostname]').Trim()
+    $displayName = (Read-Host "Display name [$defaultDisplayName]").Trim()
     $validName = $displayName -notmatch '[\x00-\x1f\x7f]'
     if (-not $validName) { Write-Host 'Enter a display name without control characters.' }
 } until ($validName)
