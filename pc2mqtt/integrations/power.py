@@ -40,6 +40,8 @@ class PowerControls:
     def __init__(self, client, node, device, connection_availability_topic, logger):
         self.client = client
         self.device = device
+        # Preserve legacy entity IDs independently of the editable display name.
+        self.identifier = f"computer_{node}".lower().replace(" ", "_")
         self.availability_topic = connection_availability_topic
         self.logger = logger
         self._legacy_config_topic = f"homeassistant/switch/{node}/config"
@@ -57,7 +59,6 @@ class PowerControls:
         self._stopping = False
 
     def config(self):
-        identifier = self.device["name"].lower().replace(" ", "_")
         common = {
             "device": self.device,
             "availability_topic": self.availability_topic,
@@ -70,7 +71,7 @@ class PowerControls:
                 "name": action.title(),
                 "command_topic": f"{topic}/set",
                 "payload_press": "PRESS",
-                "unique_id": f"{identifier}_{action}",
+                "unique_id": f"{self.identifier}_{action}",
                 "icon": {"shutdown": "mdi:power", "sleep": "mdi:sleep", "restart": "mdi:restart"}[action],
             }
             if action == "restart":

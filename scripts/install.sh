@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Install the latest stable release for the current desktop user.
+# Release installer template; scripts/build.py stamps the release tag.
 set -euo pipefail
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
+
+release_tag='@RELEASE_TAG@'
+[[ $release_tag != @* ]] || fail 'Use an installer from a release, or generate one with scripts/build.py.'
 
 [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || fail 'Linux x64 is required.'
 [[ $(id -u) != 0 ]] || fail 'Run as your desktop user, without sudo; only package installation uses sudo.'
@@ -30,18 +33,35 @@ while true; do
 done
 
 download_dir=$(mktemp -d)
-trap 'rm -rf -- "$download_dir"' EXIT
-package="$download_dir/pc2mqtt-linux-amd64.deb"
+restart_on_failure=false
+cleanup() {
+    result=$?
+    if (( result != 0 )) && [[ $restart_on_failure == true ]]; then
+        systemctl --user start pc2mqtt.service || printf 'Could not restart pc2mqtt after the failed update. Check the service status.\n' >&2
+    fi
+    rm -rf -- "$download_dir"
+    exit "$result"
+}
+trap cleanup EXIT
+package="$download_dir/pc2mqtt-${release_tag}-linux-amd64.deb"
 curl --fail --location --show-error --silent --retry 3 \
-    https://github.com/maxim-mityutko/pc2mqtt/releases/latest/download/pc2mqtt-linux-amd64.deb \
+    "https://github.com/maxim-mityutko/pc2mqtt/releases/download/${release_tag}/pc2mqtt-${release_tag}-linux-amd64.deb" \
     --output "$package"
 # Allow apt's unprivileged download user to read the local package.
 chmod 755 "$download_dir"
 chmod 644 "$package"
 sudo apt-get update
+service_dir="$config_dir/systemd/user"
+if systemctl --user is-active --quiet pc2mqtt.service; then
+    restart_on_failure=true
+fi
+# Stop the entire service process group, including PyInstaller's child process.
+# Explicitly stopping the unit also prevents Restart=always from relaunching it.
+if [[ -f $service_dir/pc2mqtt.service || $restart_on_failure == true ]]; then
+    systemctl --user stop pc2mqtt.service
+fi
 sudo apt-get install --yes "$package" pulseaudio-utils
 
-service_dir="$config_dir/systemd/user"
 mkdir -p "$service_dir"
 cat > "$service_dir/pc2mqtt.service" <<EOF
 [Unit]
