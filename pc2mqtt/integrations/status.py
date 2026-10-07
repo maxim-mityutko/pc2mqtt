@@ -12,7 +12,7 @@ import time
 from pc2mqtt.publishing import publish
 
 
-class MachineSensors:
+class StatusSensors:
     def __init__(self, client, node, device, connection_availability_topic, logger):
         self.client = client
         self.device = device
@@ -28,7 +28,7 @@ class MachineSensors:
         identifier = self.device["name"].lower().replace(" ", "_")
         for key, topic in self.topics.items():
             message = {
-                "name": "Machine IP address" if key == "ip_address" else "Last seen",
+                "name": "IP address" if key == "ip_address" else "Last seen",
                 "state_topic": f"{topic}/state",
                 "unique_id": f"{identifier}_{key}",
                 "device": self.device,

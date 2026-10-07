@@ -6,9 +6,9 @@ poll() runs about once a second; integrations own their timing and error handlin
 Optional on_message(message) handles commands, returning True for an owned topic.
 """
 
-from pc2mqtt.audio import AudioSensor
-from pc2mqtt.power import PowerControls
-from pc2mqtt.machine import MachineSensors
+from pc2mqtt.integrations.audio import AudioSensor
+from pc2mqtt.integrations.power import PowerControls
+from pc2mqtt.integrations.status import StatusSensors
 
 
-INTEGRATION_TYPES = (AudioSensor, PowerControls, MachineSensors)
+INTEGRATION_TYPES = (AudioSensor, PowerControls, StatusSensors)

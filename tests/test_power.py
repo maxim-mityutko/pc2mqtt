@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import ANY, Mock, patch
 
-from pc2mqtt.power import PowerControls, _power_command
+from pc2mqtt.integrations.power import PowerControls, _power_command
 
 
 class PowerTests(unittest.TestCase):
@@ -14,7 +14,7 @@ class PowerTests(unittest.TestCase):
         self.power = PowerControls(self.client, "desktop", self.device, "pc2mqtt/desktop/availability", self.logger)
         self.process = Mock()
         self.process.poll.return_value = None
-        patcher = patch("pc2mqtt.power.subprocess.Popen", return_value=self.process)
+        patcher = patch("pc2mqtt.integrations.power.subprocess.Popen", return_value=self.process)
         self.launch = patcher.start()
         self.addCleanup(patcher.stop)
 

@@ -14,10 +14,10 @@ Expose actions and sensors from Windows or Linux computer via MQTT.
 - Restart
 - Sleep
 - Audio playing
-- Machine IP address
+- IP address
 - Last seen
 
-## MQTT retention and machine sensors
+## MQTT retention and status sensors
 
 An MQTT 5 broker is required. All published discovery, state, and availability
 messages are retained with a 12-hour (43,200-second) message expiry, including the
@@ -26,25 +26,67 @@ every six hours and connection availability every minute while connected.
 The broker removes expired retained messages; this does not delete Home Assistant
 history. Audio still has its separate 90-second Home Assistant state expiry.
 
-Machine sensors update on connection and every minute:
+Status sensors update on connection and every minute:
 
-- **Machine IP address** reports the local IPv4 or IPv6 address used to connect to
+- **IP address** reports the local IPv4 or IPv6 address used to connect to
   the MQTT broker. With a broker on the same machine, this may be loopback.
 - **Last seen** reports the UTC timestamp of the latest heartbeat. It remains
   readable when the computer goes offline, until the retained message expires.
 
 Topics are `homeassistant/sensor/<node>/ip_address/state` and
 `homeassistant/sensor/<node>/last_seen/state`. Both sensors are discovered on the
-existing computer device. See [machine sensors](pc2mqtt/machine.py).
+existing computer device. See [status sensors](pc2mqtt/integrations/status.py).
 
 ## Installation
 
-- Windows
-  - `Win + R` and open the Autostart location for all users: `shell:common startup`
-  - Place the `pc2mqtt.exe` executable in `c:\Program Files (x86)`
-  - Create a shortcut for the executable with argument `--host <my_mqtt>` 
-  - Select to run application minimized
-  - Move the shortcut to the `Autostart` location
+Run one of these commands as your normal desktop user. The installer downloads the
+latest stable release, asks for your MQTT hostname or IP address and port (press
+Enter for **1883**), launches the app, and enables startup at login for your user.
+An MQTT 5 broker is required. Enter just the hostname or IP, without `mqtt://`.
+
+### Windows x64
+
+Paste into **PowerShell** (no administrator privileges required):
+
+```powershell
+& { $installer = Join-Path $env:TEMP ('pc2mqtt-' + [guid]::NewGuid() + '.ps1'); try { Invoke-WebRequest -UseBasicParsing 'https://github.com/maxim-mityutko/pc2mqtt/releases/latest/download/install.ps1' -OutFile $installer; if (-not $?) { throw 'Installer download failed' }; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer } finally { Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue } }
+```
+
+Installs to `%LOCALAPPDATA%\pc2mqtt` and creates a minimized `pc2mqtt.lnk` shortcut
+in your Startup folder (`Win + R`, then `shell:startup`). Rerun to update the app
+or change the broker settings; the installer replaces its running copy. Remove
+that shortcut to disable automatic startup. Close the app and delete its install
+folder to uninstall. Remove any older manually created startup entry first to
+avoid running two copies. See [the Windows installer](scripts/install.ps1).
+
+### Linux x64 (Debian/Ubuntu)
+
+Requires Bash, `curl`, a systemd user session, and glibc 2.35 or newer (for example,
+Ubuntu 22.04+). Run from a terminal in your desktop session, **without sudo**:
+
+```bash
+bash -c 'installer=$(mktemp) && curl -fsSL --retry 3 https://github.com/maxim-mityutko/pc2mqtt/releases/latest/download/install.sh -o "$installer" && bash "$installer"; result=$?; rm -f -- "$installer"; exit "$result"'
+```
+
+The installer uses `sudo` for package installation, including `pulseaudio-utils`
+for audio detection. It creates a `pc2mqtt.service` systemd **user** service,
+starts it immediately, and enables it at login. The service retries after ten
+seconds if the app exits, including when the broker is initially unreachable.
+Rerun to update or change broker settings. See [the Linux installer](scripts/install.sh).
+
+```bash
+systemctl --user status pc2mqtt         # check status
+journalctl --user -u pc2mqtt -f          # view logs
+systemctl --user disable --now pc2mqtt  # stop and disable automatic startup
+```
+
+To uninstall, disable the service above, delete
+`${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/pc2mqtt.service`, run
+`systemctl --user daemon-reload`, and then `sudo apt remove pc2mqtt`.
+
+The one-liners become available once a stable release containing these installers
+has finished building. They use GitHub's
+[latest-release asset links](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases).
 
 ## Development and builds
 
@@ -68,13 +110,13 @@ Ubuntu 22.04 for a glibc 2.35 baseline. Both build targets check the executable 
 `--help`. Start the app from source with `poetry run python -m pc2mqtt.app --host <broker>`.
 
 Integration behavior, MQTT topics, and platform requirements are documented in the
-module docstrings: [audio playback](pc2mqtt/audio.py) and [power controls](pc2mqtt/power.py).
+module docstrings: [audio playback](pc2mqtt/integrations/audio.py) and [power controls](pc2mqtt/integrations/power.py).
 
 ## Adding integrations
 
-Each integration lives in its own module: `AudioSensor` in `pc2mqtt/audio.py` and
-`PowerControls` in `pc2mqtt/power.py`, with `MachineSensors` in `pc2mqtt/machine.py`. Add a class to `INTEGRATION_TYPES` in
-`pc2mqtt/integrations.py` to enable it. This replaces the earlier sensor-only registry.
+Each integration lives in its own module: `AudioSensor` in `pc2mqtt/integrations/audio.py` and
+`PowerControls` in `pc2mqtt/integrations/power.py`, with `StatusSensors` in `pc2mqtt/integrations/status.py`. Add a class to `INTEGRATION_TYPES` in
+`pc2mqtt/integrations/__init__.py` to enable it. This replaces the earlier sensor-only registry.
 The constructor receives the MQTT client, node name, shared device metadata,
 connection availability topic, and logger.
 
@@ -96,6 +138,7 @@ polling loop. Registration is an explicit tuple of classes.
 Publishing a GitHub release (including a prerelease) runs
 `.github/workflows/release.yml` against its tag and attaches:
 
+- `install.ps1` and `install.sh` — interactive installers used by the commands above.
 - `pc2mqtt-windows-x64.exe` — standalone Windows executable.
 - `pc2mqtt-linux-amd64.deb` — Debian/Ubuntu package for x64 Linux with glibc 2.35
   or newer (for example, Ubuntu 22.04 or newer).
@@ -119,5 +162,5 @@ pc2mqtt --host <broker>
 The package installs `/usr/bin/pc2mqtt` and bundles Python and the Python dependencies.
 It recommends `pulseaudio-utils` for audio detection and `systemd-sysv` for power
 commands. Run the app as your desktop user so it can access the audio server; the
-package does not configure automatic startup. Package versions come from
+package alone does not configure automatic startup; the installer above does. Package versions come from
 `pyproject.toml`, so update the project version before tagging a release.

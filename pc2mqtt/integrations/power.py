@@ -1,6 +1,6 @@
 """Power controls.
 
-`pc2mqtt/power.py` owns three buttons: **Shutdown**, **Sleep**, and **Restart**.
+`pc2mqtt/integrations/power.py` owns three buttons: **Shutdown**, **Sleep**, and **Restart**.
 All are discovered on the same Home Assistant device and share the same topic
 structure and command payload.
 
