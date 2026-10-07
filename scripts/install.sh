@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Install the latest stable release for the current desktop user.
+# Release installer template; scripts/build.py stamps the release tag.
 set -euo pipefail
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
+
+release_tag='@RELEASE_TAG@'
+[[ $release_tag != @* ]] || fail 'Use an installer from a release, or generate one with scripts/build.py.'
 
 [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || fail 'Linux x64 is required.'
 [[ $(id -u) != 0 ]] || fail 'Run as your desktop user, without sudo; only package installation uses sudo.'
@@ -31,9 +34,9 @@ done
 
 download_dir=$(mktemp -d)
 trap 'rm -rf -- "$download_dir"' EXIT
-package="$download_dir/pc2mqtt-linux-amd64.deb"
+package="$download_dir/pc2mqtt-${release_tag}-linux-amd64.deb"
 curl --fail --location --show-error --silent --retry 3 \
-    https://github.com/maxim-mityutko/pc2mqtt/releases/latest/download/pc2mqtt-linux-amd64.deb \
+    "https://github.com/maxim-mityutko/pc2mqtt/releases/download/${release_tag}/pc2mqtt-${release_tag}-linux-amd64.deb" \
     --output "$package"
 # Allow apt's unprivileged download user to read the local package.
 chmod 755 "$download_dir"

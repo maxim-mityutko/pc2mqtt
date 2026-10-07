@@ -12,6 +12,8 @@ jobs:
     name: Build ${{ matrix.platform }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -79,22 +81,38 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           make build-deb
-          sudo dpkg --install dist/pc2mqtt-linux-amd64.deb
+          sudo dpkg --install "dist/pc2mqtt-$RELEASE_TAG-linux-amd64.deb"
           /usr/bin/pc2mqtt --help
+          bash -n "dist/install-$RELEASE_TAG.sh"
+
+      - name: Verify Windows release metadata and installer
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $version = (Get-Item "dist/pc2mqtt-$env:RELEASE_TAG-windows-x64.exe").VersionInfo
+          $expected = $env:RELEASE_TAG -replace '^v', ''
+          if ($version.ProductVersion -ne $expected -or $version.FileVersion -ne $expected) {
+            throw "Executable version does not match release tag: $env:RELEASE_TAG"
+          }
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/dist/install-$env:RELEASE_TAG.ps1", [ref]$tokens, [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
 
       - name: Attach asset to release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
           ASSET_PLATFORM: ${{ matrix.platform }}
           ASSET_ARCH: ${{ matrix.arch }}
         run: |
           if [ "$ASSET_PLATFORM" = windows ]; then
-            asset="dist/pc2mqtt-windows-$ASSET_ARCH.exe"
-            installer="scripts/install.ps1"
+            asset="dist/pc2mqtt-$RELEASE_TAG-windows-$ASSET_ARCH.exe"
+            installer="dist/install-$RELEASE_TAG.ps1"
           else
-            asset="dist/pc2mqtt-linux-amd64.deb"
-            installer="scripts/install.sh"
+            asset="dist/pc2mqtt-$RELEASE_TAG-linux-amd64.deb"
+            installer="dist/install-$RELEASE_TAG.sh"
           fi
           gh release upload "$RELEASE_TAG" "$asset" "$installer" --clobber

@@ -4,14 +4,15 @@ PYTHON ?= python
 POETRY ?= poetry
 export POETRY_VIRTUALENVS_IN_PROJECT := true
 export POETRY_VIRTUALENVS_CREATE := true
+export RELEASE_TAG
 
 .PHONY: help setup test build-exe build-deb
 
 help:
 	@echo "make setup     - create .venv and install locked dependencies"
 	@echo "make test      - run automated tests"
-	@echo "make build-exe - build dist/pc2mqtt-windows-x64.exe on Windows"
-	@echo "make build-deb - build dist/pc2mqtt-linux-amd64.deb on Linux"
+	@echo "make build-exe - build versioned Windows executable and installer"
+	@echo "make build-deb - build versioned Debian package and installer"
 
 setup:
 	$(POETRY) env use "$(PYTHON)"

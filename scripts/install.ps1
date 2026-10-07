@@ -1,5 +1,9 @@
-# Install the latest stable release for the current desktop user (PowerShell 5.1+).
+# Release installer template; scripts/build.py stamps the release tag (PowerShell 5.1+).
 $ErrorActionPreference = 'Stop'
+$releaseTag = '@RELEASE_TAG@'
+if ($releaseTag.StartsWith('@')) {
+    throw 'Use an installer from a release, or generate one with scripts/build.py.'
+}
 $nativeArchitecture = $env:PROCESSOR_ARCHITEW6432
 if (-not $nativeArchitecture) { $nativeArchitecture = $env:PROCESSOR_ARCHITECTURE }
 if ($env:OS -ne 'Windows_NT' -or $nativeArchitecture -ne 'AMD64') {
@@ -29,7 +33,7 @@ New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 $download = Join-Path $installDir ('download-' + [guid]::NewGuid().ToString() + '.exe')
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/maxim-mityutko/pc2mqtt/releases/latest/download/pc2mqtt-windows-x64.exe' -OutFile $download
+    Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/maxim-mityutko/pc2mqtt/releases/download/$releaseTag/pc2mqtt-$releaseTag-windows-x64.exe" -OutFile $download
     # Stop only this user's installed copy before replacing a locked executable.
     Get-Process -Name pc2mqtt -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -eq $executable } |

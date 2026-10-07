@@ -8,9 +8,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
-
-INSTALLER = Path(__file__).resolve().parents[1] / 'scripts/install.sh'
+from scripts import build
 
 
 @unittest.skipUnless(sys.platform.startswith('linux') and shutil.which('bash'), 'Linux Bash installer')
@@ -19,6 +19,10 @@ class LinuxInstallerTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
+        (self.root / 'scripts').mkdir()
+        shutil.copy2(build.ROOT / 'scripts/install.sh', self.root / 'scripts/install.sh')
+        with patch.object(build, 'ROOT', self.root):
+            self.installer = build.render_installer('deb', 'v2.3.4')
         self.bin = self.root / 'bin'
         self.bin.mkdir()
         self.config = self.root / 'config with spaces'
@@ -60,7 +64,7 @@ elif name == 'systemctl' and os.environ.get('INSTALL_TEST_FAILURE') == 'session'
 
     def run_installer(self, inputs='broker.local\n\n', **overrides):
         return subprocess.run(
-            ['bash', str(INSTALLER)], input=inputs, text=True,
+            ['bash', str(self.installer)], input=inputs, text=True,
             capture_output=True, env={**self.env, **overrides}, timeout=10,
         )
 
@@ -74,6 +78,8 @@ elif name == 'systemctl' and os.environ.get('INSTALL_TEST_FAILURE') == 'session'
         self.assertIn('ExecStart=/usr/bin/pc2mqtt --host broker.local --port 1883', service)
         self.assertIn('Restart=always', service)
         commands = self.commands()
+        download = next(c for c in commands if c[0] == 'curl')
+        self.assertIn('https://github.com/maxim-mityutko/pc2mqtt/releases/download/v2.3.4/pc2mqtt-v2.3.4-linux-amd64.deb', download)
         self.assertIn(['systemctl', '--user', 'enable', 'pc2mqtt.service'], commands)
         self.assertEqual(commands[-1], ['systemctl', '--user', 'restart', 'pc2mqtt.service'])
         install = next(c for c in commands if c[:3] == ['sudo', 'apt-get', 'install'])
