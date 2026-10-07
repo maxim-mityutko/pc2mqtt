@@ -15,7 +15,8 @@ Names preserve your capitalization; quote names containing spaces, such as
 `--display-name "Living Room"`. Without `--display-name`, the existing **Computer HOSTNAME** name
 is used. MQTT topics, device identifiers, and entity IDs remain tied to the real
 hostname, so changing the display name does not create new entities.
-For automatic startup, add `--display-name foo` to the Windows shortcut arguments or the
+The installers prompt for these settings. To edit automatic startup manually,
+add `--display-name foo` to the Windows shortcut arguments or the
 Linux user service's `ExecStart` line; after editing the Linux service, run
 `systemctl --user daemon-reload` and `systemctl --user restart pc2mqtt`.
 
@@ -52,7 +53,11 @@ existing computer device. See [status sensors](pc2mqtt/integrations/status.py).
 
 Run one of these commands as your normal desktop user. The command selects the
 latest stable release and downloads its versioned installer. The installer asks
-for your MQTT hostname or IP address and port (press Enter for **1883**), launches the app, and enables startup at login for your user.
+for your MQTT hostname or IP address, port, display name, and keepalive interval,
+then launches the app and enables startup at login. Press Enter to accept the
+defaults: port **1883**, display name from the **hostname**, and keepalive
+**60 seconds**. Enter display names directly, including spaces, without adding
+quotes. A keepalive of **0** disables MQTT keepalive.
 An MQTT 5 broker is required. Enter just the hostname or IP, without `mqtt://`.
 
 ### Windows x64

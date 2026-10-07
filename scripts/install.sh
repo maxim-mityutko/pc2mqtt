@@ -32,6 +32,33 @@ while true; do
     printf 'Enter a port between 1 and 65535.\n'
 done
 
+while true; do
+    read -r -p 'Display name [hostname]: ' display_name
+    display_name="${display_name#"${display_name%%[![:space:]]*}"}"
+    display_name="${display_name%"${display_name##*[![:space:]]}"}"
+    [[ ! $display_name =~ [[:cntrl:]] ]] && break
+    printf 'Enter a display name without control characters.\n'
+done
+while true; do
+    read -r -p 'MQTT keepalive in seconds [60]: ' mqtt_keepalive
+    mqtt_keepalive=${mqtt_keepalive:-60}
+    if [[ $mqtt_keepalive =~ ^[0-9]{1,5}$ ]] && (( 10#$mqtt_keepalive <= 65535 )); then
+        mqtt_keepalive=$((10#$mqtt_keepalive))
+        break
+    fi
+    printf 'Enter a keepalive between 0 and 65535 seconds (0 disables keepalive).\n'
+done
+
+# Quote a single systemd argument, including literal specifiers and dollar signs.
+display_argument=''
+if [[ -n $display_name ]]; then
+    escaped_name=${display_name//\\/\\\\}
+    escaped_name=${escaped_name//\"/\\\"}
+    escaped_name=${escaped_name//%/%%}
+    escaped_name=${escaped_name//\$/\$\$}
+    display_argument=" \"--display-name=$escaped_name\""
+fi
+
 download_dir=$(mktemp -d)
 restart_on_failure=false
 cleanup() {
@@ -69,7 +96,7 @@ Description=PC controls and sensors over MQTT
 StartLimitIntervalSec=0
 
 [Service]
-ExecStart=/usr/bin/pc2mqtt --host $mqtt_host --port $mqtt_port
+ExecStart=/usr/bin/pc2mqtt --host $mqtt_host --port $mqtt_port --keepalive $mqtt_keepalive$display_argument
 Restart=always
 RestartSec=10
 

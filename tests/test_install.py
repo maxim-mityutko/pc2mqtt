@@ -68,7 +68,7 @@ elif name == 'systemctl' and os.environ.get('INSTALL_TEST_FAILURE') == 'session'
     def service(self):
         return self.config / 'systemd/user/pc2mqtt.service'
 
-    def run_installer(self, inputs='broker.local\n\n', **overrides):
+    def run_installer(self, inputs='broker.local\n\n\n\n', **overrides):
         return subprocess.run(
             ['bash', str(self.installer)], input=inputs, text=True,
             capture_output=True, env={**self.env, **overrides}, timeout=10,
@@ -82,6 +82,8 @@ elif name == 'systemctl' and os.environ.get('INSTALL_TEST_FAILURE') == 'session'
         self.assertEqual(result.returncode, 0, result.stderr)
         service = self.service.read_text()
         self.assertIn('ExecStart=/usr/bin/pc2mqtt --host broker.local --port 1883', service)
+        self.assertIn('--keepalive 60\n', service)
+        self.assertNotIn('--display-name', service)
         self.assertIn('Restart=always', service)
         commands = self.commands()
         download = next(c for c in commands if c[0] == 'curl')
@@ -91,13 +93,13 @@ elif name == 'systemctl' and os.environ.get('INSTALL_TEST_FAILURE') == 'session'
         install = next(c for c in commands if c[:3] == ['sudo', 'apt-get', 'install'])
         self.assertIn('pulseaudio-utils', install)
         self.assertFalse(Path(install[-2]).exists(), 'Temporary package should be cleaned up')
-        result = self.run_installer('::1\n2883\n')
+        result = self.run_installer('::1\n2883\n\n\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('--host ::1 --port 2883', self.service.read_text())
         self.assertEqual(len(list(self.service.parent.glob('*.service'))), 1)
 
     def test_invalid_host_and_port_are_reprompted(self):
-        result = self.run_installer('\nbroker;touch /tmp/injected\n--help\nbroker\n0\n65536\nno\n01883\n')
+        result = self.run_installer('\nbroker;touch /tmp/injected\n--help\nbroker\n0\n65536\nno\n01883\n\n\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('--host broker --port 1883', self.service.read_text())
         self.assertNotIn('injected', self.service.read_text())
@@ -150,3 +152,18 @@ elif name == 'systemctl' and os.environ.get('INSTALL_TEST_FAILURE') == 'session'
         result = self.run_installer(INSTALL_TEST_ACTIVE='1', INSTALL_TEST_FAILURE='download')
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any('stop' in c or 'restart' in c for c in self.commands()))
+
+    def test_custom_display_name_and_keepalive(self):
+        result = self.run_installer('broker\n\n  Living Room  \n120\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('--keepalive 120 "--display-name=Living Room"\n', self.service.read_text())
+
+    def test_keepalive_validation_and_zero(self):
+        result = self.run_installer('broker\n\n\n-1\n65536\nabc\n00000\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('--keepalive 0\n', self.service.read_text())
+
+    def test_display_name_special_characters_are_literal(self):
+        result = self.run_installer('broker\n\nDesk "A" %h ${USER} \\ end\n\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(r'"--display-name=Desk \"A\" %%h $${USER} \\ end"', self.service.read_text())

@@ -25,6 +25,26 @@ do {
     if (-not $validPort) { Write-Host 'Enter a port between 1 and 65535.' }
 } until ($validPort)
 
+do {
+    $displayName = (Read-Host 'Display name [hostname]').Trim()
+    $validName = $displayName -notmatch '[\x00-\x1f\x7f]'
+    if (-not $validName) { Write-Host 'Enter a display name without control characters.' }
+} until ($validName)
+do {
+    $keepaliveInput = (Read-Host 'MQTT keepalive in seconds [60]').Trim()
+    if (-not $keepaliveInput) { $keepaliveInput = '60' }
+    $mqttKeepalive = 0
+    $validKeepalive = [int]::TryParse($keepaliveInput, [ref]$mqttKeepalive) -and $mqttKeepalive -ge 0 -and $mqttKeepalive -le 65535
+    if (-not $validKeepalive) { Write-Host 'Enter a keepalive between 0 and 65535 seconds (0 disables keepalive).' }
+} until ($validKeepalive)
+
+$appArguments = "--host $mqttHost --port $mqttPort --keepalive $mqttKeepalive --tray"
+if ($displayName) {
+    # Escape quotes and trailing backslashes for Windows argv parsing.
+    $escapedName = $displayName -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1'
+    $appArguments += ' "--display-name=' + $escapedName + '"'
+}
+
 $installDir = Join-Path $env:LOCALAPPDATA 'pc2mqtt'
 $executable = Join-Path $installDir 'pc2mqtt.exe'
 $startupDir = [Environment]::GetFolderPath('Startup')
@@ -57,7 +77,7 @@ try {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $executable
-    $shortcut.Arguments = "--host $mqttHost --port $mqttPort --tray"
+    $shortcut.Arguments = $appArguments
     $shortcut.WorkingDirectory = $installDir
     $shortcut.Save()
     Start-Process -FilePath $executable -ArgumentList $shortcut.Arguments -WorkingDirectory $installDir
