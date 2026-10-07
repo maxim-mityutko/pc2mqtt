@@ -122,6 +122,6 @@ class ApplicationLifecycleTests(unittest.TestCase):
              patch('pc2mqtt.tray.configure_logging', return_value=Path('log')), \
              patch('pc2mqtt.tray.WindowsTray') as tray:
             main(['--host', 'broker'])
-        factory.assert_called_once_with('broker', 1883, 60, connect_async=True)
+        factory.assert_called_once_with('broker', 1883, 60, display_name=None, connect_async=True)
         tray.assert_called_once_with(factory.return_value, Path('log'))
         tray.return_value.run.assert_called_once()

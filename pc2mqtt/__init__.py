@@ -17,12 +17,18 @@ class PC2MQTT:
         keepalive: int = 60,
         *,
         connect_async: bool = False,
+        display_name: str | None = None,
     ):
         """
         :param host: MQTT broker host
         :param port: MQTT port
         :param keepalive: Keepalive interval
+        :param display_name: Display name suffix; defaults to the uppercase hostname
         """
+        if display_name is not None:
+            display_name = display_name.strip()
+            if not display_name:
+                raise ValueError("Computer name must not be empty")
         self.host = host
         self.port = port
         self.keepalive = keepalive
@@ -37,7 +43,7 @@ class PC2MQTT:
 
         self.device = {
             "identifiers": [node],
-            "name": f"Computer {node.upper()}",
+            "name": f"Computer {display_name if display_name is not None else node.upper()}",
             "model": platform.system(),
             "sw_version": platform.platform(terse=True, aliased=True),
         }

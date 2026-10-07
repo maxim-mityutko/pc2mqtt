@@ -5,9 +5,19 @@ Expose actions and sensors from Windows or Linux computer via MQTT.
 ## Command Line Arguments
 
 - `--host` - ip or hostname of MQTT broker
+- `--display-name` - computer display name suffix (defaults to the hostname)
 - `--port` - port of the MQTT broker (default: 1883)
 - `--keepalive` - interval to send keepalive messages (default: 60)
 - `--tray` - Windows tray mode (default in the packaged Windows executable)
+
+For example, `pc2mqtt --host broker.local --display-name foo` displays **Computer foo**.
+Names preserve your capitalization; quote names containing spaces, such as
+`--display-name "Living Room"`. Without `--display-name`, the existing **Computer HOSTNAME** name
+is used. MQTT topics, device identifiers, and entity IDs remain tied to the real
+hostname, so changing the display name does not create new entities.
+For automatic startup, add `--display-name foo` to the Windows shortcut arguments or the
+Linux user service's `ExecStart` line; after editing the Linux service, run
+`systemctl --user daemon-reload` and `systemctl --user restart pc2mqtt`.
 
 ## Actions and Sensors
 

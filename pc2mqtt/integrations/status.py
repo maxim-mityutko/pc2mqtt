@@ -16,6 +16,8 @@ class StatusSensors:
     def __init__(self, client, node, device, connection_availability_topic, logger):
         self.client = client
         self.device = device
+        # Preserve legacy entity IDs independently of the editable display name.
+        self.identifier = f"computer_{node}".lower().replace(" ", "_")
         self.availability_topic = connection_availability_topic
         self.logger = logger
         self.topics = {
@@ -25,12 +27,11 @@ class StatusSensors:
         self._next_update = 0
 
     def config(self):
-        identifier = self.device["name"].lower().replace(" ", "_")
         for key, topic in self.topics.items():
             message = {
                 "name": "IP address" if key == "ip_address" else "Last seen",
                 "state_topic": f"{topic}/state",
-                "unique_id": f"{identifier}_{key}",
+                "unique_id": f"{self.identifier}_{key}",
                 "device": self.device,
                 "entity_category": "diagnostic",
             }

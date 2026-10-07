@@ -41,6 +41,8 @@ class AudioSensor:
     def __init__(self, client, node, device, connection_availability_topic, logger):
         self.client = client
         self.device = device
+        # Preserve legacy entity IDs independently of the editable display name.
+        self.identifier = f"computer_{node}".lower().replace(" ", "_")
         self.connection_availability_topic = connection_availability_topic
         self.logger = logger
         topic = f"homeassistant/binary_sensor/{node}/audio_playing"
@@ -63,7 +65,7 @@ class AudioSensor:
             "availability_mode": "all",
             "payload_on": "ON",
             "payload_off": "OFF",
-            "unique_id": f"{self.device['name'].lower().replace(' ', '_')}_audio_playing",
+            "unique_id": f"{self.identifier}_audio_playing",
             "icon": "mdi:volume-high",
             "expire_after": 90,
             "device": self.device,
