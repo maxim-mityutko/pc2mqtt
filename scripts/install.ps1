@@ -35,9 +35,22 @@ try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/maxim-mityutko/pc2mqtt/releases/download/$releaseTag/pc2mqtt-$releaseTag-windows-x64.exe" -OutFile $download
     # Stop only this user's installed copy before replacing a locked executable.
-    Get-Process -Name pc2mqtt -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -eq $executable } |
-        ForEach-Object { Stop-Process -Id $_.Id -Force; $_.WaitForExit() }
+    # Snapshot both PyInstaller's launcher and child before stopping either.
+    $running = @(Get-Process -Name pc2mqtt -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $executable })
+    foreach ($process in $running) {
+        try {
+            if (-not $process.HasExited) { $process.Kill() }
+        } catch {
+            # A child may exit when its parent is stopped.
+            if (-not $process.HasExited) { throw }
+        }
+    }
+    foreach ($process in $running) {
+        if (-not $process.WaitForExit(10000)) {
+            throw 'The installed pc2mqtt process did not exit; the executable was not replaced.'
+        }
+    }
     Move-Item -LiteralPath $download -Destination $executable -Force
     Unblock-File -LiteralPath $executable
 

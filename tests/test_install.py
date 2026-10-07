@@ -48,6 +48,12 @@ elif name == 'curl':
     if os.environ.get('INSTALL_TEST_FAILURE') == 'download':
         sys.exit(22)
     pathlib.Path(args[args.index('--output') + 1]).write_text('fake package')
+elif name == 'systemctl' and 'is-active' in args:
+    sys.exit(0 if os.environ.get('INSTALL_TEST_ACTIVE') == '1' else 3)
+elif name == 'systemctl' and 'stop' in args and os.environ.get('INSTALL_TEST_FAILURE') == 'stop':
+    sys.exit(1)
+elif name == 'sudo' and os.environ.get('INSTALL_TEST_FAILURE') == 'install' and 'install' in args:
+    sys.exit(100)
 elif name == 'sudo' and os.environ.get('INSTALL_TEST_FAILURE') == 'package':
     sys.exit(100)
 elif name == 'systemctl' and os.environ.get('INSTALL_TEST_FAILURE') == 'session':
@@ -114,3 +120,33 @@ elif name == 'systemctl' and os.environ.get('INSTALL_TEST_FAILURE') == 'session'
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(self.service.exists())
         self.assertFalse(any(c[0] == 'curl' for c in self.commands()))
+
+    def test_running_service_stops_before_package_replacement(self):
+        result = self.run_installer(INSTALL_TEST_ACTIVE='1')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = self.commands()
+        download = next(i for i, command in enumerate(commands) if command[0] == 'curl')
+        stop = commands.index(['systemctl', '--user', 'stop', 'pc2mqtt.service'])
+        install = next(i for i, command in enumerate(commands) if command[:3] == ['sudo', 'apt-get', 'install'])
+        restart = commands.index(['systemctl', '--user', 'restart', 'pc2mqtt.service'])
+        self.assertLess(download, stop)
+        self.assertLess(stop, install)
+        self.assertLess(install, restart)
+
+    def test_failed_install_attempts_to_restore_running_service(self):
+        result = self.run_installer(INSTALL_TEST_ACTIVE='1', INSTALL_TEST_FAILURE='install')
+        self.assertEqual(result.returncode, 100)
+        commands = self.commands()
+        self.assertIn(['systemctl', '--user', 'stop', 'pc2mqtt.service'], commands)
+        self.assertEqual(commands[-1], ['systemctl', '--user', 'start', 'pc2mqtt.service'])
+        self.assertFalse(self.service.exists())
+
+    def test_stop_failure_prevents_package_replacement(self):
+        result = self.run_installer(INSTALL_TEST_ACTIVE='1', INSTALL_TEST_FAILURE='stop')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any(c[:3] == ['sudo', 'apt-get', 'install'] for c in self.commands()))
+
+    def test_download_failure_leaves_running_service_alone(self):
+        result = self.run_installer(INSTALL_TEST_ACTIVE='1', INSTALL_TEST_FAILURE='download')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any('stop' in c or 'restart' in c for c in self.commands()))

@@ -33,7 +33,16 @@ while true; do
 done
 
 download_dir=$(mktemp -d)
-trap 'rm -rf -- "$download_dir"' EXIT
+restart_on_failure=false
+cleanup() {
+    result=$?
+    if (( result != 0 )) && [[ $restart_on_failure == true ]]; then
+        systemctl --user start pc2mqtt.service || printf 'Could not restart pc2mqtt after the failed update. Check the service status.\n' >&2
+    fi
+    rm -rf -- "$download_dir"
+    exit "$result"
+}
+trap cleanup EXIT
 package="$download_dir/pc2mqtt-${release_tag}-linux-amd64.deb"
 curl --fail --location --show-error --silent --retry 3 \
     "https://github.com/maxim-mityutko/pc2mqtt/releases/download/${release_tag}/pc2mqtt-${release_tag}-linux-amd64.deb" \
@@ -42,9 +51,17 @@ curl --fail --location --show-error --silent --retry 3 \
 chmod 755 "$download_dir"
 chmod 644 "$package"
 sudo apt-get update
+service_dir="$config_dir/systemd/user"
+if systemctl --user is-active --quiet pc2mqtt.service; then
+    restart_on_failure=true
+fi
+# Stop the entire service process group, including PyInstaller's child process.
+# Explicitly stopping the unit also prevents Restart=always from relaunching it.
+if [[ -f $service_dir/pc2mqtt.service || $restart_on_failure == true ]]; then
+    systemctl --user stop pc2mqtt.service
+fi
 sudo apt-get install --yes "$package" pulseaudio-utils
 
-service_dir="$config_dir/systemd/user"
 mkdir -p "$service_dir"
 cat > "$service_dir/pc2mqtt.service" <<EOF
 [Unit]

@@ -65,7 +65,8 @@ Paste into **PowerShell** (no administrator privileges required):
 
 Installs to `%LOCALAPPDATA%\pc2mqtt` and creates a `pc2mqtt.lnk` startup shortcut
 in your Startup folder (`Win + R`, then `shell:startup`). Rerun the one-liner to update the app
-or change the broker settings; the installer replaces its running copy. Remove
+or change the broker settings; after downloading, the installer stops its running
+copy, waits for it to exit, replaces the executable, and starts the new version. Remove
 that shortcut to disable automatic startup. Choose **Quit** in the tray menu and delete its install
 folder to uninstall. Remove any older manually created startup entry first to
 avoid running two copies. See [the Windows installer](scripts/install.ps1).
@@ -96,7 +97,10 @@ The installer uses `sudo` for package installation, including `pulseaudio-utils`
 for audio detection. It creates a `pc2mqtt.service` systemd **user** service,
 starts it immediately, and enables it at login. The service retries after ten
 seconds if the app exits, including when the broker is initially unreachable.
-Rerun the one-liner to update or change broker settings. See [the Linux installer](scripts/install.sh).
+Rerun the one-liner to update or change broker settings. After downloading, the
+installer stops the existing user service before replacing the package, then
+starts it again. If installation fails after stopping a running service, it
+attempts to restart that service. See [the Linux installer](scripts/install.sh).
 
 ```bash
 systemctl --user status pc2mqtt         # check status
