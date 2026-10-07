@@ -1,7 +1,7 @@
 import json
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from pc2mqtt.power import PowerControls, _power_command
 
@@ -31,7 +31,7 @@ class PowerTests(unittest.TestCase):
             publications = self.client.publish.call_args_list
             self.assertEqual(len(publications), 4)
             self.assertEqual(publications[0].kwargs, {
-                "topic": "homeassistant/switch/desktop/config", "payload": "", "retain": True,
+                "topic": "homeassistant/switch/desktop/config", "payload": "", "retain": True, "properties": ANY,
             })
             publications = publications[1:]
             messages = [json.loads(call.kwargs["payload"]) for call in publications]

@@ -14,6 +14,28 @@ Expose actions and sensors from Windows or Linux computer via MQTT.
 - Restart
 - Sleep
 - Audio playing
+- Machine IP address
+- Last seen
+
+## MQTT retention and machine sensors
+
+An MQTT 5 broker is required. All published discovery, state, and availability
+messages are retained with a 12-hour (43,200-second) message expiry, including the
+last will. Each publication resets that topic's expiry. Discovery is refreshed
+every six hours and connection availability every minute while connected.
+The broker removes expired retained messages; this does not delete Home Assistant
+history. Audio still has its separate 90-second Home Assistant state expiry.
+
+Machine sensors update on connection and every minute:
+
+- **Machine IP address** reports the local IPv4 or IPv6 address used to connect to
+  the MQTT broker. With a broker on the same machine, this may be loopback.
+- **Last seen** reports the UTC timestamp of the latest heartbeat. It remains
+  readable when the computer goes offline, until the retained message expires.
+
+Topics are `homeassistant/sensor/<node>/ip_address/state` and
+`homeassistant/sensor/<node>/last_seen/state`. Both sensors are discovered on the
+existing computer device. See [machine sensors](pc2mqtt/machine.py).
 
 ## Installation
 
@@ -51,7 +73,7 @@ module docstrings: [audio playback](pc2mqtt/audio.py) and [power controls](pc2mq
 ## Adding integrations
 
 Each integration lives in its own module: `AudioSensor` in `pc2mqtt/audio.py` and
-`PowerControls` in `pc2mqtt/power.py`. Add a class to `INTEGRATION_TYPES` in
+`PowerControls` in `pc2mqtt/power.py`, with `MachineSensors` in `pc2mqtt/machine.py`. Add a class to `INTEGRATION_TYPES` in
 `pc2mqtt/integrations.py` to enable it. This replaces the earlier sensor-only registry.
 The constructor receives the MQTT client, node name, shared device metadata,
 connection availability topic, and logger.

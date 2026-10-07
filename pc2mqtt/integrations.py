@@ -8,6 +8,7 @@ Optional on_message(message) handles commands, returning True for an owned topic
 
 from pc2mqtt.audio import AudioSensor
 from pc2mqtt.power import PowerControls
+from pc2mqtt.machine import MachineSensors
 
 
-INTEGRATION_TYPES = (AudioSensor, PowerControls)
+INTEGRATION_TYPES = (AudioSensor, PowerControls, MachineSensors)
