@@ -6,11 +6,11 @@ from types import SimpleNamespace
 from unittest.mock import ANY, Mock, patch
 
 from pc2mqtt import PC2MQTT
-from pc2mqtt.audio import is_audio_playing
+from pc2mqtt.integrations.audio import is_audio_playing
 
 
 class AudioDetectionTests(unittest.TestCase):
-    @patch("pc2mqtt.audio.subprocess.run")
+    @patch("pc2mqtt.integrations.audio.subprocess.run")
     def test_linux_output_states(self, run):
         for output, expected in [
             ("", False),
@@ -27,7 +27,7 @@ class AudioDetectionTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["timeout"], 5)
         self.assertEqual(run.call_args.kwargs["env"]["LC_ALL"], "C")
 
-    @patch("pc2mqtt.audio.subprocess.run")
+    @patch("pc2mqtt.integrations.audio.subprocess.run")
     def test_linux_errors_propagate(self, run):
         for error in [FileNotFoundError(), subprocess.TimeoutExpired("pactl", 5),
                       subprocess.CalledProcessError(1, "pactl")]:
@@ -115,8 +115,8 @@ class MQTTTests(unittest.TestCase):
 
     def sample_audio(self, now, playing):
         self.pc.client.reset_mock()
-        with patch("pc2mqtt.audio.time.monotonic", return_value=now), patch(
-            "pc2mqtt.audio.is_audio_playing", return_value=playing,
+        with patch("pc2mqtt.integrations.audio.time.monotonic", return_value=now), patch(
+            "pc2mqtt.integrations.audio.is_audio_playing", return_value=playing,
             side_effect=playing if isinstance(playing, Exception) else None,
         ):
             self.audio.poll()

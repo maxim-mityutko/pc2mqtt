@@ -14,10 +14,10 @@ Expose actions and sensors from Windows or Linux computer via MQTT.
 - Restart
 - Sleep
 - Audio playing
-- Machine IP address
+- IP address
 - Last seen
 
-## MQTT retention and machine sensors
+## MQTT retention and status sensors
 
 An MQTT 5 broker is required. All published discovery, state, and availability
 messages are retained with a 12-hour (43,200-second) message expiry, including the
@@ -28,14 +28,14 @@ history. Audio still has its separate 90-second Home Assistant state expiry.
 
 Machine sensors update on connection and every minute:
 
-- **Machine IP address** reports the local IPv4 or IPv6 address used to connect to
+- **IP address** reports the local IPv4 or IPv6 address used to connect to
   the MQTT broker. With a broker on the same machine, this may be loopback.
 - **Last seen** reports the UTC timestamp of the latest heartbeat. It remains
   readable when the computer goes offline, until the retained message expires.
 
 Topics are `homeassistant/sensor/<node>/ip_address/state` and
 `homeassistant/sensor/<node>/last_seen/state`. Both sensors are discovered on the
-existing computer device. See [machine sensors](pc2mqtt/machine.py).
+existing computer device. See [status sensors](pc2mqtt/integrations/status.py).
 
 ## Installation
 
@@ -68,13 +68,13 @@ Ubuntu 22.04 for a glibc 2.35 baseline. Both build targets check the executable 
 `--help`. Start the app from source with `poetry run python -m pc2mqtt.app --host <broker>`.
 
 Integration behavior, MQTT topics, and platform requirements are documented in the
-module docstrings: [audio playback](pc2mqtt/audio.py) and [power controls](pc2mqtt/power.py).
+module docstrings: [audio playback](pc2mqtt/integrations/audio.py) and [power controls](pc2mqtt/integrations/power.py).
 
 ## Adding integrations
 
-Each integration lives in its own module: `AudioSensor` in `pc2mqtt/audio.py` and
-`PowerControls` in `pc2mqtt/power.py`, with `MachineSensors` in `pc2mqtt/machine.py`. Add a class to `INTEGRATION_TYPES` in
-`pc2mqtt/integrations.py` to enable it. This replaces the earlier sensor-only registry.
+Each integration lives in its own module: `AudioSensor` in `pc2mqtt/integrations/audio.py` and
+`PowerControls` in `pc2mqtt/integrations/power.py`, with `StatusSensors` in `pc2mqtt/integrations/status.py`. Add a class to `INTEGRATION_TYPES` in
+`pc2mqtt/integrations/__init__.py` to enable it. This replaces the earlier sensor-only registry.
 The constructor receives the MQTT client, node name, shared device metadata,
 connection availability topic, and logger.
 

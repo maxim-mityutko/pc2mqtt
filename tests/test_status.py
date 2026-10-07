@@ -6,20 +6,20 @@ from unittest.mock import Mock, patch
 import paho.mqtt.client as mqtt
 
 from pc2mqtt import PC2MQTT
-from pc2mqtt.machine import MachineSensors
+from pc2mqtt.integrations.status import StatusSensors
 from pc2mqtt.publishing import expiry_properties
 
 
-class MachineTests(unittest.TestCase):
+class StatusTests(unittest.TestCase):
     def setUp(self):
         self.client = Mock()
         self.client.socket.return_value.getsockname.return_value = ("192.168.1.10", 1234)
-        self.sensor = MachineSensors(
+        self.sensor = StatusSensors(
             self.client, "desktop", {"name": "Computer DESKTOP"}, "connection", Mock(),
         )
 
     def poll(self, now):
-        with patch("pc2mqtt.machine.time.monotonic", return_value=now):
+        with patch("pc2mqtt.integrations.status.time.monotonic", return_value=now):
             self.sensor.poll()
 
     def test_discovery_and_offline_last_seen(self):
