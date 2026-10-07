@@ -53,6 +53,21 @@ jobs:
           python -m pip install poetry==1.7.0
           make setup
 
+      - name: Check Windows installer syntax
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/scripts/install.ps1", [ref]$tokens, [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+
+      - name: Check Linux installer syntax
+        if: runner.os == 'Linux'
+        run: bash -n scripts/install.sh
+
       - name: Run tests
         run: make test
 
@@ -77,7 +92,9 @@ jobs:
         run: |
           if [ "$ASSET_PLATFORM" = windows ]; then
             asset="dist/pc2mqtt-windows-$ASSET_ARCH.exe"
+            installer="scripts/install.ps1"
           else
             asset="dist/pc2mqtt-linux-amd64.deb"
+            installer="scripts/install.sh"
           fi
-          gh release upload "$RELEASE_TAG" "$asset" --clobber
+          gh release upload "$RELEASE_TAG" "$asset" "$installer" --clobber
