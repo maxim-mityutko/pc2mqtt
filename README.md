@@ -7,6 +7,7 @@ Expose actions and sensors from Windows or Linux computer via MQTT.
 - `--host` - ip or hostname of MQTT broker
 - `--port` - port of the MQTT broker (default: 1883)
 - `--keepalive` - interval to send keepalive messages (default: 60)
+- `--tray` - Windows tray mode (default in the packaged Windows executable)
 
 ## Actions and Sensors
 
@@ -52,12 +53,25 @@ Paste into **PowerShell** (no administrator privileges required):
 & { $ErrorActionPreference = 'Stop'; $release = Invoke-RestMethod 'https://api.github.com/repos/maxim-mityutko/pc2mqtt/releases/latest'; $tag = $release.tag_name; $installer = Join-Path $env:TEMP ('pc2mqtt-' + [guid]::NewGuid() + '.ps1'); try { Invoke-WebRequest -UseBasicParsing "https://github.com/maxim-mityutko/pc2mqtt/releases/download/$tag/install-$tag.ps1" -OutFile $installer; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer } finally { Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue } }
 ```
 
-Installs to `%LOCALAPPDATA%\pc2mqtt` and creates a minimized `pc2mqtt.lnk` shortcut
+Installs to `%LOCALAPPDATA%\pc2mqtt` and creates a `pc2mqtt.lnk` startup shortcut
 in your Startup folder (`Win + R`, then `shell:startup`). Rerun the one-liner to update the app
 or change the broker settings; the installer replaces its running copy. Remove
-that shortcut to disable automatic startup. Close the app and delete its install
+that shortcut to disable automatic startup. Choose **Quit** in the tray menu and delete its install
 folder to uninstall. Remove any older manually created startup entry first to
 avoid running two copies. See [the Windows installer](scripts/install.ps1).
+
+The app runs in your desktop session with a system tray icon and no console
+window. Right-click the icon for MQTT connection status, **Open log**, and **Quit**.
+If Windows hides the icon, look in the tray's overflow menu. The app retries the
+connection when the broker is unavailable, including at login. Logs are kept in
+`%LOCALAPPDATA%\pc2mqtt\pc2mqtt.log` with two rotated backups (1 MiB each).
+Quit publishes an offline state before disconnecting when the broker is reachable.
+
+Windows tray mode keeps audio detection in the logged-in user's session. A
+conventional Windows service runs in a separate session, even under a local user
+account; see Microsoft's [service session documentation](https://learn.microsoft.com/en-us/windows/win32/services/interactive-services).
+When running from source, add `--tray` to enable the icon. Linux continues to use
+the systemd user service below.
 
 ### Linux x64 (Debian/Ubuntu)
 
@@ -95,7 +109,7 @@ are build templates; use the generated installers in release assets or `dist/`.
 
 ## Development and builds
 
-Install Python 3.11 or 3.12, Poetry (CI uses 1.7.0), and GNU Make first.
+Install Python 3.11 or 3.12, Poetry (CI uses 2.4.1), and GNU Make first.
 On Windows, GNU Make is available through Chocolatey (`choco install make`).
 Linux package builds also require `binutils` and `dpkg-dev`.
 
@@ -149,7 +163,7 @@ Publishing a GitHub release (including a prerelease) runs
 `.github/workflows/release.yml` against its tag. For example, `v0.5.0` attaches:
 
 - `install-v0.5.0.ps1` and `install-v0.5.0.sh` — installers pinned to this release.
-- `pc2mqtt-v0.5.0-windows-x64.exe` — standalone Windows executable.
+- `pc2mqtt-v0.5.0-windows-x64.exe` — standalone Windows tray executable (no console window).
 - `pc2mqtt-v0.5.0-linux-amd64.deb` — Debian/Ubuntu package for x64 Linux with glibc 2.35
   or newer (for example, Ubuntu 22.04 or newer).
 

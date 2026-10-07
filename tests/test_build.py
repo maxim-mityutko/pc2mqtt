@@ -55,6 +55,8 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertEqual(asset.name, 'pc2mqtt-v2.3.4-rc.1-windows-x64.exe')
         self.assertTrue(asset.exists())
         command = run.call_args_list[0].args[0]
+        self.assertIn('--windowed', command)
+        self.assertIn('pystray._win32', command)
         metadata = Path(command[command.index('--version-file') + 1]).read_text()
         ast.parse(metadata)
         self.assertIn("StringStruct('ProductVersion', '2.3.4-rc.1')", metadata)

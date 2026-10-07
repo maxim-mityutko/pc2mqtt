@@ -74,7 +74,12 @@ def build(kind, tag=None):
                 raise SystemExit(f"Missing {tool}: install binutils and dpkg-dev before building.")
 
     os.chdir(ROOT)
-    version_options = ["--version-file", str(windows_version_file(version, numeric))] if kind == "exe" else []
+    version_options = []
+    if kind == "exe":
+        version_options = [
+            "--windowed", "--hidden-import", "pystray._win32",
+            "--version-file", str(windows_version_file(version, numeric)),
+        ]
     subprocess.run([
         sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm",
         "--onefile", "--name", "pc2mqtt", "--paths", ".", *version_options, "pc2mqtt/app.py",

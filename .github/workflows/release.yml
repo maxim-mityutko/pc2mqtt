@@ -52,7 +52,7 @@ jobs:
 
       - name: Set up Poetry environment
         run: |
-          python -m pip install poetry==1.7.0
+          python -m pip install poetry==2.4.1
           make setup
 
       - name: Check Windows installer syntax

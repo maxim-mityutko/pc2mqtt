@@ -14,7 +14,9 @@ class PC2MQTT:
         self,
         host: str,
         port: int = 1883,
-        keepalive: int = 60
+        keepalive: int = 60,
+        *,
+        connect_async: bool = False,
     ):
         """
         :param host: MQTT broker host
@@ -53,7 +55,8 @@ class PC2MQTT:
         ]
         self.logger.info("System: %s / Node: %s", self.device["model"], node)
         self.logger.info(f"Connecting to '{self.host}:{self.port}'")
-        self.client.connect(host=self.host, port=self.port, keepalive=self.keepalive)
+        connect = self.client.connect_async if connect_async else self.client.connect
+        connect(host=self.host, port=self.port, keepalive=self.keepalive)
 
     @property
     def _logger(self):
@@ -82,15 +85,31 @@ class PC2MQTT:
         for integration in self.integrations:
             integration.config()
 
+    def poll(self):
+        now = time.monotonic()
+        if self.client.is_connected():
+            if now >= self._next_discovery:
+                self.config()
+            if now >= self._next_availability:
+                publish(self.client, topic=self.availability_topic, payload="online")
+                self._next_availability = now + 60
+        for integration in self.integrations:
+            integration.poll()
+
     def state(self):
         while True:
-            now = time.monotonic()
-            if self.client.is_connected():
-                if now >= self._next_discovery:
-                    self.config()
-                if now >= self._next_availability:
-                    publish(self.client, topic=self.availability_topic, payload="online")
-                    self._next_availability = now + 60
-            for integration in self.integrations:
-                integration.poll()
+            self.poll()
             time.sleep(1)
+
+    def close(self):
+        try:
+            if self.client.is_connected():
+                message = publish(self.client, topic=self.availability_topic, payload="offline")
+                message.wait_for_publish(timeout=2)
+        except (RuntimeError, ValueError):
+            self.logger.warning("Unable to publish offline state during shutdown", exc_info=True)
+        finally:
+            try:
+                self.client.disconnect()
+            finally:
+                self.client.loop_stop()

@@ -44,13 +44,12 @@ try {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $executable
-    $shortcut.Arguments = "--host $mqttHost --port $mqttPort"
+    $shortcut.Arguments = "--host $mqttHost --port $mqttPort --tray"
     $shortcut.WorkingDirectory = $installDir
-    $shortcut.WindowStyle = 7 # Minimized
     $shortcut.Save()
-    Start-Process -FilePath $executable -ArgumentList $shortcut.Arguments -WorkingDirectory $installDir -WindowStyle Minimized
+    Start-Process -FilePath $executable -ArgumentList $shortcut.Arguments -WorkingDirectory $installDir
 } finally {
     if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download -Force }
 }
-Write-Host "Installed and launched pc2mqtt in $installDir. It will start minimized at login."
+Write-Host "Installed and launched pc2mqtt in $installDir. It will start in the system tray at login."
 Write-Host "Startup shortcut: $shortcutPath"
