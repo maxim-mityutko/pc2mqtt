@@ -3,8 +3,10 @@ import platform
 import time
 
 import paho.mqtt.client as mqtt
+from paho.mqtt.packettypes import PacketTypes
 
 from pc2mqtt.integrations import INTEGRATION_TYPES
+from pc2mqtt.publishing import MESSAGE_EXPIRY_SECONDS, expiry_properties, publish
 
 
 class PC2MQTT:
@@ -23,7 +25,9 @@ class PC2MQTT:
         self.port = port
         self.keepalive = keepalive
 
-        self.client = mqtt.Client()
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
+        self._next_discovery = float("inf")
+        self._next_availability = float("inf")
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
 
@@ -36,7 +40,10 @@ class PC2MQTT:
             "sw_version": platform.platform(terse=True, aliased=True),
         }
         self.availability_topic = f"pc2mqtt/{node}/availability"
-        self.client.will_set(self.availability_topic, payload="offline", retain=True)
+        self.client.will_set(
+            self.availability_topic, payload="offline", retain=True,
+            properties=expiry_properties(PacketTypes.WILLMESSAGE),
+        )
 
         # logging
         self.logger = self._logger
@@ -55,13 +62,14 @@ class PC2MQTT:
         logger.setLevel(logging.INFO)
         return logger
 
-    def on_connect(self, client: mqtt.Client, userdata, flags, reason_code):
+    def on_connect(self, client: mqtt.Client, userdata, flags, reason_code, properties=None):
         self._logger.info(f"Connected to MQTT broker with the result: {reason_code}")
 
         if reason_code != 0:
             return
         self.config()
-        client.publish(topic=self.availability_topic, payload="online", retain=True)
+        publish(client, topic=self.availability_topic, payload="online")
+        self._next_availability = time.monotonic() + 60
 
     def on_message(self, client, userdata, message: mqtt.MQTTMessage):
         for integration in self.integrations:
@@ -70,11 +78,19 @@ class PC2MQTT:
                 break
 
     def config(self):
+        self._next_discovery = time.monotonic() + MESSAGE_EXPIRY_SECONDS / 2
         for integration in self.integrations:
             integration.config()
 
     def state(self):
         while True:
+            now = time.monotonic()
+            if self.client.is_connected():
+                if now >= self._next_discovery:
+                    self.config()
+                if now >= self._next_availability:
+                    publish(self.client, topic=self.availability_topic, payload="online")
+                    self._next_availability = now + 60
             for integration in self.integrations:
                 integration.poll()
             time.sleep(1)

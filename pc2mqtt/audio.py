@@ -32,6 +32,8 @@ import os
 import subprocess
 import time
 
+from pc2mqtt.publishing import publish
+
 
 class AudioSensor:
     """Own audio discovery, availability, playback detection, and publishing cadence."""
@@ -66,7 +68,8 @@ class AudioSensor:
             "expire_after": 90,
             "device": self.device,
         }
-        self.client.publish(
+        publish(
+            self.client,
             topic=self.config_topic,
             payload=json.dumps(message), retain=True,
         )
@@ -85,7 +88,7 @@ class AudioSensor:
             if error != self._audio_error:
                 self.logger.warning("Unable to detect audio playback: %s", exc)
             if self._audio_error is None or now >= self._next_audio_update:
-                self.client.publish(topic=availability, payload="offline", retain=True)
+                publish(self.client, topic=availability, payload="offline", retain=True)
                 self._next_audio_update = now + 60
             self._audio_error = error
             return
@@ -110,11 +113,12 @@ class AudioSensor:
             return
 
         payload = "ON" if active else "OFF"
-        self.client.publish(
+        publish(
+            self.client,
             topic=self.state_topic,
             payload=payload,
         )
-        self.client.publish(topic=availability, payload="online", retain=True)
+        publish(self.client, topic=availability, payload="online", retain=True)
         self._audio_last_state = payload
         # Early ON updates leave the regular minute heartbeat on schedule.
         if heartbeat_due:

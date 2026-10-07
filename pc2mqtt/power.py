@@ -33,6 +33,8 @@ import json
 from queue import Empty, Full, Queue
 import subprocess
 
+from pc2mqtt.publishing import publish
+
 
 class PowerControls:
     def __init__(self, client, node, device, connection_availability_topic, logger):
@@ -61,7 +63,7 @@ class PowerControls:
             "availability_topic": self.availability_topic,
         }
         # Remove the old shutdown switch when migrating to aligned buttons.
-        self.client.publish(topic=self._legacy_config_topic, payload="", retain=True)
+        publish(self.client, topic=self._legacy_config_topic, payload="", retain=True)
         for action, topic in self.button_topics.items():
             message = {
                 **common,
@@ -73,7 +75,7 @@ class PowerControls:
             }
             if action == "restart":
                 message["device_class"] = "restart"
-            self.client.publish(topic=f"{topic}/config", payload=json.dumps(message), retain=True)
+            publish(self.client, topic=f"{topic}/config", payload=json.dumps(message), retain=True)
         for topic in self._commands:
             self.client.subscribe(topic=topic)
 

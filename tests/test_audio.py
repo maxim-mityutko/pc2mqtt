@@ -3,7 +3,7 @@ import subprocess
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from pc2mqtt import PC2MQTT
 from pc2mqtt.audio import is_audio_playing
@@ -91,7 +91,7 @@ class MQTTTests(unittest.TestCase):
         for _ in range(2):
             self.pc.client.reset_mock()
             self.pc.on_connect(self.pc.client, None, None, 0)
-            audio, legacy, shutdown, sleep, restart, connection = self.publications()
+            audio, legacy, shutdown, sleep, restart, ip, last_seen, connection = self.publications()
             self.assertEqual(connection["topic"], "pc2mqtt/desktop/availability")
             self.assertEqual(connection["payload"], "online")
             sensor = json.loads(audio["payload"])
@@ -178,12 +178,12 @@ class MQTTTests(unittest.TestCase):
     def test_last_will(self):
         self.pc.client.will_set.assert_called_once_with(
             "pc2mqtt/desktop/availability",
-            payload="offline", retain=True,
+            payload="offline", retain=True, properties=ANY,
         )
 
     @patch("pc2mqtt.time.sleep", side_effect=[None, None, KeyboardInterrupt])
     def test_polling_checks_audio_every_second(self, sleep):
-        with patch.object(self.audio, "poll") as audio:
+        with patch.object(self.audio, "poll") as audio, patch.object(self.pc.integrations[2], "poll"):
             with self.assertRaises(KeyboardInterrupt):
                 self.pc.state()
         self.assertEqual(audio.call_count, 3)
@@ -217,7 +217,7 @@ class IntegrationRegistrationTests(unittest.TestCase):
             with self.assertRaises(KeyboardInterrupt):
                 pc.state()
         pc.client.publish.assert_called_once_with(
-            topic=pc.availability_topic, payload="online", retain=True,
+            topic=pc.availability_topic, payload="online", retain=True, properties=ANY,
         )
 
     def test_command_dispatch_skips_read_only_integrations(self):
