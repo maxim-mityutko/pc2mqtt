@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import ANY, Mock, patch
 
 from pc2mqtt import PC2MQTT
-from pc2mqtt.integrations.audio import is_audio_playing
+from pc2mqtt.integrations.audio import AudioSensor, is_audio_playing
 
 
 class AudioDetectionTests(unittest.TestCase):
@@ -76,14 +76,66 @@ class AudioDetectionTests(unittest.TestCase):
         utilities.GetDeviceEnumerator.return_value.EnumAudioEndpoints.assert_called_with(0, 1)
 
 
+class AudioSupportTests(unittest.TestCase):
+    def setUp(self):
+        self.client = Mock()
+        self.sensor = AudioSensor(self.client, 'pc', {'model': 'Linux', 'name': 'Computer PC'}, 'connection', Mock())
+
+    def test_missing_pactl_removes_retained_entity_and_skips_polling(self):
+        with patch('pc2mqtt.integrations.audio.shutil.which', return_value=None), \
+             patch('pc2mqtt.integrations.audio.is_audio_playing') as detect:
+            self.sensor.config()
+            messages = self.client.publish.call_args_list
+            self.assertEqual({c.kwargs['topic'] for c in messages},
+                             {self.sensor.config_topic, self.sensor.state_topic, self.sensor.availability_topic})
+            self.assertTrue(all(c.kwargs['payload'] == '' and c.kwargs['retain'] for c in messages))
+            self.client.reset_mock()
+            self.sensor.poll()
+            self.sensor.poll()
+            detect.assert_not_called()
+            self.client.publish.assert_not_called()
+            self.sensor.logger.warning.assert_not_called()
+
+    def test_pactl_removed_during_runtime_removes_entity(self):
+        with patch('pc2mqtt.integrations.audio.shutil.which', return_value='/usr/bin/pactl'):
+            self.sensor.config()
+        self.client.reset_mock()
+        with patch('pc2mqtt.integrations.audio.shutil.which', return_value=None), \
+             patch('pc2mqtt.integrations.audio.is_audio_playing', side_effect=FileNotFoundError()) as detect:
+            self.sensor.poll()
+            self.sensor.poll()
+            detect.assert_called_once()
+        self.assertFalse(self.sensor.supported)
+        self.assertTrue(all(c.kwargs['payload'] == '' for c in self.client.publish.call_args_list))
+
+    def test_installing_pactl_restores_discovery_on_refresh(self):
+        with patch('pc2mqtt.integrations.audio.shutil.which', return_value=None):
+            self.sensor.config()
+        self.client.reset_mock()
+        with patch('pc2mqtt.integrations.audio.shutil.which', return_value='/usr/bin/pactl'), \
+             patch('pc2mqtt.integrations.audio.is_audio_playing', return_value=False):
+            self.sensor.config()
+            self.sensor.poll()
+        messages = {c.kwargs['topic']: c.kwargs['payload'] for c in self.client.publish.call_args_list}
+        self.assertEqual(json.loads(messages[self.sensor.config_topic])['name'], 'Audio playing')
+        self.assertEqual(messages[self.sensor.availability_topic], 'online')
+
+
 class MQTTTests(unittest.TestCase):
     def setUp(self):
+        supported = patch('pc2mqtt.integrations.audio.audio_supported', return_value=True)
+        supported.start()
+        self.addCleanup(supported.stop)
         with patch("pc2mqtt.mqtt.Client"), patch("pc2mqtt.platform.node", return_value="desktop"):
             self.pc = PC2MQTT("broker")
+        self.pc.integrations[-1].backend = Mock()
+        self.pc.integrations[-1].backend.supported_features.return_value = set(self.pc.integrations[-1].topics)
         self.pc.integrations[-1].poll = Mock()
         self.pc.logger = Mock()
         self.audio = self.pc.integrations[0]
         self.audio.logger = Mock()
+        self.audio.config()
+        self.pc.client.publish.reset_mock()
 
     def publications(self):
         return [call.kwargs for call in self.pc.client.publish.call_args_list]

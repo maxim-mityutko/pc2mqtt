@@ -21,6 +21,35 @@ def run(*args):
 
 
 class LinuxDesktop:
+    def __init__(self):
+        self._session_properties = {}
+
+    def supported_features(self):
+        features = {'uptime'}
+        if shutil.which('pactl'):
+            features.update(('volume', 'mute'))
+        if shutil.which('loginctl'):
+            try:
+                _, self._session_properties = self.session()
+            except (OSError, subprocess.SubprocessError, RuntimeError):
+                # Preserve known capabilities through transient logind failures.
+                pass
+        else:
+            self._session_properties = {}
+        properties = self._session_properties
+        if properties:
+            features.add('lock_session')
+            if properties.get('LockedHint') in ('yes', 'no'):
+                features.add('session_locked')
+        session_type = properties.get('Type') or os.environ.get('XDG_SESSION_TYPE')
+        is_x11 = session_type == 'x11' and bool(os.environ.get('DISPLAY'))
+        desktop = properties.get('Desktop', '') + ':' + os.environ.get('XDG_CURRENT_DESKTOP', '')
+        if (is_x11 and shutil.which('xprintidle')) or ('gnome' in desktop.lower() and shutil.which('gdbus')):
+            features.add('idle_time')
+        if (is_x11 and shutil.which('xset')) or (os.environ.get('SWAYSOCK') and shutil.which('swaymsg')):
+            features.add('displays_off')
+        return features
+
     def session(self):
         session = os.environ.get('XDG_SESSION_ID') or run('loginctl', 'show-user', str(os.getuid()), '-p', 'Display', '--value')
         if not session:

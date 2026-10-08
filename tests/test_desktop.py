@@ -19,6 +19,9 @@ class DesktopTests(unittest.TestCase):
                        'volume': 40, 'mute': False, 'lock_session': None, 'displays_off': None}
         self.desktop.backend = Mock()
         self.desktop.backend.read.side_effect = lambda key: self.values[key]
+        self.desktop.backend.supported_features.return_value = set(ENTITIES)
+        self.desktop.config()
+        self.client.reset_mock()
 
     def poll(self, now):
         with patch('pc2mqtt.integrations.desktop.time.monotonic', return_value=now):
@@ -29,6 +32,39 @@ class DesktopTests(unittest.TestCase):
 
     def message(self, key, payload, retain=False):
         return SimpleNamespace(topic=f'{self.desktop.topics[key]}/set', payload=payload, retain=retain)
+
+    def test_unsupported_features_removed_and_never_polled_or_executed(self):
+        self.desktop.backend.supported_features.return_value = {'uptime'}
+        self.desktop.config()
+        messages = self.messages()
+        self.assertTrue(messages[f'{self.desktop.topics["uptime"]}/config'])
+        for key in ENTITIES.keys() - {'uptime'}:
+            for suffix in ('config', 'state', 'availability'):
+                self.assertEqual(messages[f'{self.desktop.topics[key]}/{suffix}'], '')
+        self.client.subscribe.assert_not_called()
+        self.client.unsubscribe.assert_any_call(f'{self.desktop.topics["volume"]}/set')
+        self.desktop.on_message(self.message('lock_session', b'PRESS'))
+        self.client.reset_mock()
+        self.desktop.backend.read.reset_mock()
+        self.poll(0)
+        self.desktop.backend.execute.assert_not_called()
+        self.desktop.backend.read.assert_called_once_with('uptime')
+        self.assertTrue(all('/uptime/' in topic for topic in self.messages()))
+
+    def test_new_capabilities_appear_on_next_discovery(self):
+        self.desktop.backend.supported_features.return_value = {'uptime'}
+        self.desktop.config()
+        self.client.reset_mock()
+        self.desktop.backend.supported_features.return_value = {'uptime', 'volume'}
+        self.desktop.config()
+        self.assertTrue(self.messages()[f'{self.desktop.topics["volume"]}/config'])
+        self.client.subscribe.assert_called_once_with(f'{self.desktop.topics["volume"]}/set')
+
+    def test_detection_failure_preserves_existing_discovery(self):
+        self.desktop.backend.supported_features.side_effect = OSError('temporary error')
+        self.desktop.config()
+        self.client.publish.assert_not_called()
+        self.assertEqual(self.desktop.supported, set(ENTITIES))
 
     def test_discovery_and_commands(self):
         self.desktop.config()
@@ -141,6 +177,39 @@ class DesktopTests(unittest.TestCase):
 class LinuxDesktopTests(unittest.TestCase):
     def setUp(self):
         self.backend = LinuxDesktop()
+
+    def capabilities(self, properties, env, tools):
+        with patch.dict('os.environ', env, clear=True), \
+             patch.object(self.backend, 'session', return_value=('3', properties)), \
+             patch('pc2mqtt.integrations.desktop.linux.shutil.which', side_effect=lambda name: name if name in tools else None):
+            return self.backend.supported_features()
+
+    def test_wayland_capabilities_exclude_unsupported_controls(self):
+        capabilities = self.capabilities(
+            {'Type': 'wayland', 'Desktop': 'KDE', 'LockedHint': 'no'}, {'DISPLAY': ':0'},
+            {'loginctl', 'pactl', 'xset', 'xprintidle', 'gdbus'})
+        self.assertEqual(capabilities, {'uptime', 'volume', 'mute', 'session_locked', 'lock_session'})
+
+    def test_gnome_and_x11_capabilities(self):
+        properties = {'Type': 'wayland', 'Desktop': 'GNOME', 'LockedHint': 'yes'}
+        capabilities = self.capabilities(properties, {}, {'loginctl', 'gdbus'})
+        self.assertIn('idle_time', capabilities)
+        self.assertNotIn('displays_off', capabilities)
+        properties['Type'] = 'x11'
+        capabilities = self.capabilities(properties, {'DISPLAY': ':0'},
+                                         {'loginctl', 'pactl', 'xset', 'xprintidle'})
+        self.assertEqual(capabilities, set(ENTITIES))
+
+    def test_no_desktop_tools_only_advertises_uptime(self):
+        self.assertEqual(self.capabilities({}, {}, set()), {'uptime'})
+
+    def test_transient_session_failure_preserves_known_capabilities(self):
+        expected = self.capabilities({'Type': 'wayland', 'Desktop': 'GNOME', 'LockedHint': 'yes'},
+                                     {}, {'loginctl', 'gdbus'})
+        with patch.dict('os.environ', {}, clear=True), \
+             patch.object(self.backend, 'session', side_effect=OSError('bus unavailable')), \
+             patch('pc2mqtt.integrations.desktop.linux.shutil.which', side_effect=lambda name: name if name in {'loginctl', 'gdbus'} else None):
+            self.assertEqual(self.backend.supported_features(), expected)
 
     def test_native_commands_have_timeout_and_no_shell(self):
         with patch('pc2mqtt.integrations.desktop.linux.subprocess.run') as command:

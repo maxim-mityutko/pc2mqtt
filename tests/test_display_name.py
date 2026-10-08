@@ -1,6 +1,6 @@
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from pc2mqtt import PC2MQTT
 from pc2mqtt.app import main
@@ -10,7 +10,10 @@ class DisplayNameTests(unittest.TestCase):
     def discovery(self, display_name=None):
         with patch('pc2mqtt.platform.node', return_value='ABCD'), patch('pc2mqtt.mqtt.Client'):
             pc = PC2MQTT('broker', display_name=display_name)
-        pc.config()
+        pc.integrations[-1].backend = Mock()
+        pc.integrations[-1].backend.supported_features.return_value = set(pc.integrations[-1].topics)
+        with patch('pc2mqtt.integrations.audio.audio_supported', return_value=True):
+            pc.config()
         messages = {
             call.kwargs['topic']: json.loads(call.kwargs['payload'])
             for call in pc.client.publish.call_args_list if call.kwargs['payload'] and call.kwargs['topic'].endswith('/config')

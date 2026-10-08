@@ -19,7 +19,8 @@ it does not measure audible volume or microphone activity.
 
 The state topic is `homeassistant/binary_sensor/<node>/audio_playing/state`, where
 `<node>` is the lowercase hostname. Discovery is retained and republished on MQTT
-reconnection. Detection errors mark the sensor unavailable and are retried without
+reconnection. Missing pactl on Linux removes discovery and disables polling until
+the next discovery refresh or reconnect. Temporary detection errors mark the sensor unavailable and are retried without
 interrupting the power controls. Shared connection availability at
 `pc2mqtt/<node>/availability` uses an MQTT last will; audio also has its own
 availability topic for detection failures. Both must be online for the sensor to
@@ -29,6 +30,7 @@ stale playback states when the client stops reporting.
 
 import json
 import os
+import shutil
 import subprocess
 import time
 
@@ -49,12 +51,25 @@ class AudioSensor:
         self.config_topic = f"{topic}/config"
         self.state_topic = f"{topic}/state"
         self.availability_topic = f"{topic}/availability"
+        self.supported = False
         self._audio_error = None
         self._audio_active_since = None
         self._audio_last_state = None
         self._next_audio_update = 0
 
+    def _remove_discovery(self):
+        self.supported = False
+        self._audio_active_since = None
+        self._audio_last_state = None
+        self._audio_error = None
+        for topic in (self.config_topic, self.state_topic, self.availability_topic):
+            publish(self.client, topic=topic, payload='')
+
     def config(self):
+        self.supported = audio_supported(self.device['model'])
+        if not self.supported:
+            self._remove_discovery()
+            return
         message = {
             "name": "Audio playing",
             "state_topic": self.state_topic,
@@ -79,10 +94,15 @@ class AudioSensor:
         self._next_audio_update = 0
 
     def poll(self):
+        if not self.supported:
+            return
         availability = self.availability_topic
         try:
             playing = is_audio_playing(self.device["model"])
         except Exception as exc:
+            if isinstance(exc, FileNotFoundError) and not audio_supported(self.device['model']):
+                self._remove_discovery()
+                return
             # Detection failures interrupt the continuous-playback window.
             now = time.monotonic()
             self._audio_active_since = None
@@ -125,6 +145,10 @@ class AudioSensor:
         # Early ON updates leave the regular minute heartbeat on schedule.
         if heartbeat_due:
             self._next_audio_update = now + 60
+
+
+def audio_supported(system: str) -> bool:
+    return system.lower() == 'windows' or (system.lower() == 'linux' and shutil.which('pactl') is not None)
 
 
 def is_audio_playing(system: str) -> bool:

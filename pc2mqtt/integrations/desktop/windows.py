@@ -59,6 +59,10 @@ class WindowsDesktop:
         self.user.SendNotifyMessageW.argtypes = [C.c_void_p, C.c_uint32, C.c_size_t, C.c_ssize_t]
         self.user.SendNotifyMessageW.restype = C.c_int
 
+    def supported_features(self):
+        return {'session_locked', 'idle_time', 'uptime', 'volume', 'mute',
+                'lock_session', 'displays_off'}
+
     def locked(self):
         pointer, size = C.c_void_p(), C.c_uint32()
         # WTS_CURRENT_SESSION, WTSSessionInfoEx.

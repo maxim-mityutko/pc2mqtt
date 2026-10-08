@@ -1,8 +1,8 @@
 """Desktop sensors and controls, sampled every ten seconds and refreshed every minute.
 
 Commands are validated and queued on the MQTT thread, then executed by poll().
-Each entity has its own backend availability; unsupported desktop features do not
-prevent other sensors from updating. Volume/mute address the default output.
+Only supported entities are discovered; temporary backend errors use per-entity
+availability without removing discovery. Volume/mute address the default output.
 See linux.py and windows.py for platform requirements.
 """
 
@@ -34,13 +34,30 @@ class Desktop:
         self.commands = {f'{self.topics[key]}/set': key for key in ('volume', 'mute', 'lock_session', 'displays_off')}
         self.pending = Queue(maxsize=16)
         self.backend = None
+        self.supported = set()
         self.next_poll = 0
         self.last = {}
         self.errors = {}
 
     def config(self):
+        try:
+            supported = set(self._backend().supported_features()) & ENTITIES.keys()
+        except NotImplementedError:
+            supported = set()
+        except Exception as exc:
+            # Failed detection is not evidence that existing entities are unsupported.
+            self.logger.warning('Unable to determine desktop capabilities: %s', exc)
+            return
+        self.supported = supported
         for key, (domain, name, options) in ENTITIES.items():
             topic = self.topics[key]
+            if key not in supported:
+                # Remove retained discovery from older versions or desktop setups.
+                for suffix in ('config', 'state', 'availability'):
+                    publish(self.client, topic=f'{topic}/{suffix}', payload='')
+                if f'{topic}/set' in self.commands:
+                    self.client.unsubscribe(f'{topic}/set')
+                continue
             payload = {
                 'name': name, 'unique_id': f'{self.identifier}_{key}', 'device': self.device,
                 'availability_mode': 'all',
@@ -71,7 +88,7 @@ class Desktop:
         key = self.commands.get(message.topic)
         if key is None:
             return False
-        if message.retain:
+        if key not in self.supported or message.retain:
             return True
         try:
             value = message.payload.decode('ascii')
@@ -121,7 +138,8 @@ class Desktop:
             pass
         else:
             try:
-                self._backend().execute(key, value)
+                if key in self.supported:
+                    self._backend().execute(key, value)
             except Exception as exc:
                 self._failed(key, exc)
                 failed_command = key
@@ -131,7 +149,7 @@ class Desktop:
             return
         self.next_poll = now + 10
         for key, (domain, _, _) in ENTITIES.items():
-            if key == failed_command:
+            if key not in self.supported or key == failed_command:
                 continue
             try:
                 value = self._backend().read(key)

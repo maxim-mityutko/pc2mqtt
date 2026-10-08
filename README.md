@@ -50,11 +50,14 @@ after 90 seconds. Details: [audio](pc2mqtt/integrations/audio.py),
 
 Desktop sensors and volume/mute are checked every ten seconds; changes publish
 immediately after a check, with a one-minute refresh. Volume/mute feedback uses
-the corresponding `/state` topic. Unsupported features report unavailable individually.
+the corresponding `/state` topic. Unsupported desktop features and audio playback without `pactl` on Linux are
+omitted from discovery; temporary backend
+failures mark supported entities unavailable. Old unsupported discovery entries
+are removed on reconnect or discovery refresh.
 Windows supports all desktop features; uptime may span Fast Startup shutdowns.
 Linux lock state depends on the desktop updating loginctl's `LockedHint`; idle time
 supports GNOME or X11, and display-off supports X11 or Sway. Other Wayland desktops
-may lack idle/display control. The user service needs the desktop's display/session
+omit unsupported idle/display controls. The user service needs the desktop's display/session
 environment (`DISPLAY`/`XAUTHORITY` for X11, `SWAYSOCK` for Sway).
 
 ## Installation
