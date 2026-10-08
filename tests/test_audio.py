@@ -1,233 +1,204 @@
 import json
 import subprocess
 import sys
-import unittest
 from types import SimpleNamespace
-from unittest.mock import ANY, Mock, patch
+from unittest.mock import Mock, patch
 
-from pc2mqtt import PC2MQTT
-from pc2mqtt.integrations.audio import is_audio_playing
+import pytest
+
+from pc2mqtt.integrations import integration_types
+from pc2mqtt.integrations.linux.audio import Audio
+from pc2mqtt.integrations.linux.audio import Backend as LinuxAudio
+from pc2mqtt.integrations.windows.audio import Backend as WindowsAudio
 
 
-class AudioDetectionTests(unittest.TestCase):
-    @patch("pc2mqtt.integrations.audio.subprocess.run")
+class TestAudioDetection:
+    @patch('pc2mqtt.integrations.linux.audio.subprocess.run')
     def test_linux_output_states(self, run):
         for output, expected in [
-            ("", False),
-            ("0\tspeaker\tdriver\ts16le 2ch 48000Hz\tIDLE\n", False),
-            ("0\tspeaker\tdriver\ts16le 2ch 48000Hz\tSUSPENDED\n", False),
-            ("0\tspeaker\tdriver\ts16le 2ch 48000Hz\tIDLE\n"
-             "1\theadphones\tdriver\ts16le 2ch 48000Hz\tRUNNING\n", True),
+            ('', False),
+            ('0\tspeaker\tdriver\ts16le 2ch 48000Hz\tIDLE\n', False),
+            ('0\tspeaker\tdriver\ts16le 2ch 48000Hz\tSUSPENDED\n', False),
+            (
+                '0\tspeaker\tdriver\ts16le 2ch 48000Hz\tIDLE\n1\theadphones\tdriver\ts16le 2ch 48000Hz\tRUNNING\n',
+                True,
+            ),
         ]:
-            with self.subTest(output=output):
-                run.return_value.stdout = output
-                self.assertEqual(is_audio_playing("Linux"), expected)
-        self.assertEqual(run.call_args.args[0], ["pactl", "list", "short", "sinks"])
-        self.assertTrue(run.call_args.kwargs["check"])
-        self.assertEqual(run.call_args.kwargs["timeout"], 5)
-        self.assertEqual(run.call_args.kwargs["env"]["LC_ALL"], "C")
+            run.return_value.stdout = output
+            assert LinuxAudio().is_audio_playing() == expected
+        assert run.call_args.args[0] == ['pactl', 'list', 'short', 'sinks']
+        assert run.call_args.kwargs['check']
+        assert run.call_args.kwargs['timeout'] == 5
+        assert run.call_args.kwargs['env']['LC_ALL'] == 'C'
 
-    @patch("pc2mqtt.integrations.audio.subprocess.run")
+    @patch('pc2mqtt.integrations.linux.audio.subprocess.run')
     def test_linux_errors_propagate(self, run):
-        for error in [FileNotFoundError(), subprocess.TimeoutExpired("pactl", 5),
-                      subprocess.CalledProcessError(1, "pactl")]:
-            with self.subTest(error=error):
-                run.side_effect = error
-                with self.assertRaises(type(error)):
-                    is_audio_playing("Linux")
+        for error in [
+            FileNotFoundError(),
+            subprocess.TimeoutExpired('pactl', 5),
+            subprocess.CalledProcessError(1, 'pactl'),
+        ]:
+            run.side_effect = error
+            with pytest.raises(type(error)):
+                LinuxAudio().is_audio_playing()
 
     def test_unsupported_platform(self):
-        with self.assertRaises(NotImplementedError):
-            is_audio_playing("Darwin")
+        with pytest.raises(NotImplementedError):
+            integration_types('Darwin')
 
     def test_windows_outputs_and_com_cleanup(self):
         com = Mock()
         utilities = Mock()
         devices = utilities.GetDeviceEnumerator.return_value.EnumAudioEndpoints.return_value
         modules = {
-            "comtypes": com,
-            "pycaw": Mock(),
-            "pycaw.api": Mock(),
-            "pycaw.api.audiopolicy": Mock(),
-            "pycaw.constants": SimpleNamespace(
+            'comtypes': com,
+            'pycaw': Mock(),
+            'pycaw.api': Mock(),
+            'pycaw.api.audiopolicy': Mock(),
+            'pycaw.constants': SimpleNamespace(
                 DEVICE_STATE=SimpleNamespace(ACTIVE=SimpleNamespace(value=1)),
                 EDataFlow=SimpleNamespace(eRender=SimpleNamespace(value=0)),
             ),
-            "pycaw.pycaw": SimpleNamespace(AudioUtilities=utilities),
+            'pycaw.pycaw': SimpleNamespace(AudioUtilities=utilities),
         }
         with patch.dict(sys.modules, modules):
             for states, expected in [([], False), ([0, 2], False), ([0, 1], True)]:
-                with self.subTest(states=states):
-                    outputs = []
-                    for state in states:
-                        output = Mock()
-                        sessions = output.Activate.return_value.QueryInterface.return_value.GetSessionEnumerator.return_value
-                        sessions.GetCount.return_value = 1
-                        sessions.GetSession.return_value.GetState.return_value = state
-                        outputs.append(output)
-                    devices.GetCount.return_value = len(outputs)
-                    devices.Item.side_effect = outputs
-                    self.assertEqual(is_audio_playing("Windows"), expected)
-            devices.GetCount.side_effect = RuntimeError("audio service unavailable")
-            with self.assertRaises(RuntimeError):
-                is_audio_playing("Windows")
-        self.assertEqual(com.CoInitialize.call_count, 4)
-        self.assertEqual(com.CoUninitialize.call_count, 4)
+                outputs = []
+                for state in states:
+                    output = Mock()
+                    sessions = output.Activate.return_value.QueryInterface.return_value.GetSessionEnumerator.return_value
+                    sessions.GetCount.return_value = 1
+                    sessions.GetSession.return_value.GetState.return_value = state
+                    outputs.append(output)
+                devices.GetCount.return_value = len(outputs)
+                devices.Item.side_effect = outputs
+                assert WindowsAudio().is_audio_playing() == expected
+            devices.GetCount.side_effect = RuntimeError('audio service unavailable')
+            with pytest.raises(RuntimeError):
+                WindowsAudio().is_audio_playing()
+        assert com.CoInitialize.call_count == 4
+        assert com.CoUninitialize.call_count == 4
         utilities.GetDeviceEnumerator.return_value.EnumAudioEndpoints.assert_called_with(0, 1)
 
 
-class MQTTTests(unittest.TestCase):
-    def setUp(self):
-        with patch("pc2mqtt.mqtt.Client"), patch("pc2mqtt.platform.node", return_value="desktop"):
-            self.pc = PC2MQTT("broker")
-        self.pc.logger = Mock()
-        self.audio = self.pc.integrations[0]
-        self.audio.logger = Mock()
+class TestPlayback:
+    @pytest.fixture(autouse=True)
+    def setup(self, make_integration):
+        self.h = make_integration(Audio, capabilities={'audio_playing'})
+        self.audio = self.h.integration
+        self.audio.config()
+        self.h.client.reset_mock()
 
-    def publications(self):
-        return [call.kwargs for call in self.pc.client.publish.call_args_list]
+    def sample(self, now, playing):
+        self.h.client.reset_mock()
+        self.h.clock.return_value = now
+        if isinstance(playing, Exception):
+            self.h.backend.read.side_effect = playing
+        else:
+            self.h.backend.read.side_effect = None
+            self.h.backend.read.return_value = playing
+        self.audio.poll()
+        return [call.kwargs['payload'] for call in self.h.client.publish.call_args_list]
 
-    def test_discovery_on_connect_and_reconnect(self):
-        for _ in range(2):
-            self.pc.client.reset_mock()
-            self.pc.on_connect(self.pc.client, None, None, 0)
-            audio, legacy, shutdown, sleep, restart, ip, last_seen, connection = self.publications()
-            self.assertEqual(connection["topic"], "pc2mqtt/desktop/availability")
-            self.assertEqual(connection["payload"], "online")
-            sensor = json.loads(audio["payload"])
-            self.assertEqual(audio["topic"], "homeassistant/binary_sensor/desktop/audio_playing/config")
-            self.assertTrue(audio["retain"])
-            self.assertEqual(sensor["device"], json.loads(shutdown["payload"])["device"])
-            self.assertNotEqual(sensor["unique_id"], json.loads(shutdown["payload"])["unique_id"])
-            self.assertEqual(sensor["payload_on"], "ON")
-            self.assertEqual(sensor["payload_off"], "OFF")
-            self.assertEqual(sensor["expire_after"], 90)
-            self.assertEqual(sensor["availability_mode"], "all")
-            self.assertEqual(sensor["availability"], [
-                {"topic": "pc2mqtt/desktop/availability"},
-                {"topic": "homeassistant/binary_sensor/desktop/audio_playing/availability"},
-            ])
-            self.assertEqual(self.pc.client.subscribe.call_count, 3)
+    @pytest.mark.parametrize(
+        'samples',
+        [
+            [
+                (0, False, ['OFF', 'online']),
+                (1, False, []),
+                (59, False, []),
+                (60, False, ['OFF', 'online']),
+                (119, False, []),
+                (120, False, ['OFF', 'online']),
+            ],
+            [
+                (0, False, ['OFF', 'online']),
+                (10, True, []),
+                (11.99, True, []),
+                (12, True, ['ON', 'online']),
+                (14, True, []),
+                (59, True, []),
+                (60, True, ['ON', 'online']),
+                (61, False, []),
+                (119, False, []),
+                (120, False, ['OFF', 'online']),
+                (121, True, []),
+                (123, True, ['ON', 'online']),
+            ],
+            [
+                (0, False, ['OFF', 'online']),
+                (10, True, []),
+                (11, False, []),
+                (12, True, []),
+                (13, False, []),
+                (59, True, []),
+                (60, True, ['OFF', 'online']),
+                (61, True, ['ON', 'online']),
+            ],
+            [(0, True, ['OFF', 'online']), (1, True, []), (2, True, ['ON', 'online'])],
+        ],
+        ids=['idle-heartbeat', 'sustained-playback', 'short-bursts', 'active-at-startup'],
+    )
+    def test_cadence(self, samples):
+        for now, playing, expected in samples:
+            assert self.sample(now, playing) == expected
 
-    def test_failed_connection_does_not_announce(self):
-        self.pc.on_connect(self.pc.client, None, None, 5)
-        self.pc.client.publish.assert_not_called()
-
-    def sample_audio(self, now, playing):
-        self.pc.client.reset_mock()
-        with patch("pc2mqtt.integrations.audio.time.monotonic", return_value=now), patch(
-            "pc2mqtt.integrations.audio.is_audio_playing", return_value=playing,
-            side_effect=playing if isinstance(playing, Exception) else None,
-        ):
-            self.audio.poll()
-        return self.publications()
-
-    def test_idle_updates_once_per_minute(self):
-        self.assertEqual(self.sample_audio(0, False)[0]["payload"], "OFF")
-        self.assertEqual(self.sample_audio(1, False), [])
-        self.assertEqual(self.sample_audio(59, False), [])
-        self.assertEqual(self.sample_audio(60, False)[0]["payload"], "OFF")
-        self.assertEqual(self.sample_audio(119, False), [])
-        self.assertEqual(self.sample_audio(120, False)[0]["payload"], "OFF")
-
-    def test_sustained_playback_publishes_early_once(self):
-        self.sample_audio(0, False)
-        self.assertEqual(self.sample_audio(10, True), [])
-        self.assertEqual(self.sample_audio(11.99, True), [])
-        self.assertEqual(self.sample_audio(12, True)[0]["payload"], "ON")
-        self.assertEqual(self.sample_audio(14, True), [])
-        self.assertEqual(self.sample_audio(59, True), [])
-        self.assertEqual(self.sample_audio(60, True)[0]["payload"], "ON")
-        self.assertEqual(self.sample_audio(61, False), [])
-        self.assertEqual(self.sample_audio(119, False), [])
-        self.assertEqual(self.sample_audio(120, False)[0]["payload"], "OFF")
-        self.assertEqual(self.sample_audio(121, True), [])
-        self.assertEqual(self.sample_audio(123, True)[0]["payload"], "ON")
-
-    def test_short_bursts_reset_active_timer(self):
-        self.sample_audio(0, False)
-        for now, playing in [(10, True), (11, False), (12, True),
-                             (13, False), (59, True)]:
-            self.assertEqual(self.sample_audio(now, playing), [])
-        self.assertEqual(self.sample_audio(60, True)[0]["payload"], "OFF")
-        self.assertEqual(self.sample_audio(61, True)[0]["payload"], "ON")
-
-    def test_active_at_startup_waits_two_seconds(self):
-        self.assertEqual(self.sample_audio(0, True)[0]["payload"], "OFF")
-        self.assertEqual(self.sample_audio(1, True), [])
-        self.assertEqual(self.sample_audio(2, True)[0]["payload"], "ON")
-
-    def test_detection_failure_and_recovery(self):
-        self.sample_audio(0, False)
-        self.sample_audio(10, True)
-        failed = self.sample_audio(11, RuntimeError("backend unavailable"))
-        self.assertEqual(len(failed), 1)
-        self.assertEqual(failed[0]["payload"], "offline")
-        self.assertEqual(self.sample_audio(12, RuntimeError("backend unavailable")), [])
-        recovered = self.sample_audio(13, True)
-        self.assertEqual(recovered[0]["payload"], "OFF")
-        self.assertEqual(recovered[1]["payload"], "online")
-        self.assertEqual(self.sample_audio(14, True), [])
-        self.assertEqual(self.sample_audio(15, True)[0]["payload"], "ON")
+    def test_failure_resets_debounce_and_recovers(self):
+        self.sample(0, False)
+        self.sample(10, True)
+        assert self.sample(11, RuntimeError('backend unavailable')) == ['offline']
+        assert self.sample(12, RuntimeError('backend unavailable')) == []
+        assert self.sample(13, True) == ['OFF', 'online']
+        assert self.sample(14, True) == []
+        assert self.sample(15, True) == ['ON', 'online']
+        self.h.logger.warning.assert_called_once()
 
     def test_reconnect_forces_fresh_state(self):
-        self.sample_audio(0, False)
-        self.pc.on_connect(self.pc.client, None, None, 0)
-        self.assertEqual(self.sample_audio(10, False)[0]["payload"], "OFF")
+        self.sample(0, False)
+        self.audio.config()
+        assert self.sample(10, False) == ['OFF', 'online']
 
-    def test_last_will(self):
-        self.pc.client.will_set.assert_called_once_with(
-            "pc2mqtt/desktop/availability",
-            payload="offline", retain=True, properties=ANY,
+    def test_missing_dependency_clears_whole_domain_and_stops_polling(self):
+        self.h.backend.supported_features.return_value = set()
+        self.sample(0, FileNotFoundError('pactl'))
+        self.h.backend.read.reset_mock()
+        assert self.sample(1, False) == []
+        self.h.backend.read.assert_not_called()
+        assert not self.audio.supported
+
+    def test_temporary_capability_error_during_read_failure_is_contained(self):
+        self.h.backend.supported_features.side_effect = OSError('probe failed')
+        messages = self.sample(0, FileNotFoundError('temporary failure'))
+        assert messages[-1] == 'offline'
+        assert '' not in messages
+        assert 'audio_playing' in self.audio.supported
+
+
+class TestAudioCapabilities:
+    def test_missing_pactl_removes_all_audio_discovery(self, make_integration, monkeypatch):
+        monkeypatch.setattr('pc2mqtt.integrations.linux.audio.shutil.which', lambda name: None)
+        h = make_integration(Audio, backend=LinuxAudio())
+        h.integration.config()
+        messages = [call.kwargs for call in h.client.publish.call_args_list]
+        assert len(messages) == 9
+        assert all(message['payload'] == '' and message['retain'] for message in messages)
+        h.client.reset_mock()
+        h.integration.poll()
+        h.client.publish.assert_not_called()
+
+    def test_installing_dependency_restores_entities(self, make_integration, monkeypatch):
+        monkeypatch.setattr('pc2mqtt.integrations.linux.audio.shutil.which', lambda name: None)
+        h = make_integration(Audio, backend=LinuxAudio())
+        h.integration.config()
+        monkeypatch.setattr(
+            'pc2mqtt.integrations.linux.audio.shutil.which', lambda name: '/bin/pactl'
         )
-
-    @patch("pc2mqtt.time.sleep", side_effect=[None, None, KeyboardInterrupt])
-    def test_polling_checks_audio_every_second(self, sleep):
-        with patch.object(self.audio, "poll") as audio, patch.object(self.pc.integrations[2], "poll"):
-            with self.assertRaises(KeyboardInterrupt):
-                self.pc.state()
-        self.assertEqual(audio.call_count, 3)
-        self.assertEqual(self.publications(), [])
-        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 1, 1])
-
-
-class IntegrationRegistrationTests(unittest.TestCase):
-    def test_registered_integrations_receive_context_and_lifecycle_calls(self):
-        factories = [Mock(), Mock()]
-        with patch("pc2mqtt.INTEGRATION_TYPES", factories), patch("pc2mqtt.mqtt.Client"):
-            pc = PC2MQTT("broker")
-        for factory in factories:
-            factory.assert_called_once_with(
-                pc.client, pc.device["identifiers"][0], pc.device, pc.availability_topic, pc.logger,
-            )
-        for _ in range(2):
-            pc.on_connect(pc.client, None, None, 0)
-        with patch("pc2mqtt.time.sleep", side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                pc.state()
-        for factory in factories:
-            self.assertEqual(factory.return_value.config.call_count, 2)
-            factory.return_value.poll.assert_called_once_with()
-
-    def test_empty_registry_only_announces_connection(self):
-        with patch("pc2mqtt.INTEGRATION_TYPES", ()), patch("pc2mqtt.mqtt.Client"):
-            pc = PC2MQTT("broker")
-        pc.on_connect(pc.client, None, None, 0)
-        with patch("pc2mqtt.time.sleep", side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                pc.state()
-        pc.client.publish.assert_called_once_with(
-            topic=pc.availability_topic, payload="online", retain=True, properties=ANY,
-        )
-
-    def test_command_dispatch_skips_read_only_integrations(self):
-        with patch("pc2mqtt.mqtt.Client"):
-            pc = PC2MQTT("broker")
-        message = SimpleNamespace(topic="unknown", payload=b"OFF", retain=False)
-        with patch.object(pc.integrations[1], "on_message", return_value=True) as handler:
-            pc.on_message(pc.client, None, message)
-        handler.assert_called_once_with(message)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        h.client.reset_mock()
+        h.integration.config()
+        configs = [
+            json.loads(call.kwargs['payload'])
+            for call in h.client.publish.call_args_list
+            if call.kwargs['topic'].endswith('/config') and call.kwargs['payload']
+        ]
+        assert {config['name'] for config in configs} == {'Audio playing', 'Volume', 'Mute'}
+        assert h.client.subscribe.call_count == 2

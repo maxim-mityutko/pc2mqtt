@@ -89,7 +89,7 @@ fi
 if [[ -f $service_dir/pc2mqtt.service || $restart_on_failure == true ]]; then
     systemctl --user stop pc2mqtt.service
 fi
-sudo apt-get install --yes "$package" pulseaudio-utils
+sudo apt-get install --yes "$package" pulseaudio-utils x11-xserver-utils xprintidle libglib2.0-bin
 
 mkdir -p "$service_dir"
 cat > "$service_dir/pc2mqtt.service" <<EOF

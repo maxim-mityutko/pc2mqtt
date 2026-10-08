@@ -80,9 +80,12 @@ def build(kind, tag=None):
             "--windowed", "--hidden-import", "pystray._win32",
             "--version-file", str(windows_version_file(version, numeric)),
         ]
+    other_platform = 'linux' if kind == 'exe' else 'windows'
     subprocess.run([
         sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm",
-        "--onefile", "--name", "pc2mqtt", "--paths", ".", *version_options, "pc2mqtt/app.py",
+        "--onefile", "--name", "pc2mqtt", "--paths", ".",
+        "--exclude-module", f"pc2mqtt.integrations.{other_platform}",
+        *version_options, "pc2mqtt/app.py",
     ], check=True)
     executable = ROOT / "dist" / ("pc2mqtt.exe" if kind == "exe" else "pc2mqtt")
     subprocess.run([str(executable), "--help"], check=True)
@@ -110,7 +113,7 @@ def build(kind, tag=None):
         "Section: utils\n"
         "Priority: optional\n"
         f"Depends: libc6 (>= {libc_version}), zlib1g\n"
-        "Recommends: pulseaudio-utils, systemd-sysv\n"
+        "Recommends: pulseaudio-utils, systemd-sysv, x11-xserver-utils, xprintidle, libglib2.0-bin\n"
         "Description: Expose computer controls and audio playback through MQTT\n"
     )
     (package_root / "DEBIAN/control").write_text(control)

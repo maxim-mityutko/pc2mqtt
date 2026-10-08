@@ -1,14 +1,18 @@
-"""Built-in integrations, explicitly registered without dynamic plugin loading.
+"""Select built-in integrations once for the current operating system.
 
 Constructors accept (client, node, device, connection_availability_topic, logger).
-config() announces discovery and subscribes to commands on each MQTT connection.
-poll() runs about once a second; integrations own their timing and error handling.
-Optional on_message(message) handles commands, returning True for an owned topic.
+config() refreshes discovery/capabilities and command subscriptions on connection.
+poll() runs about once a second; integrations own timing and error handling.
+on_message(message) returns True for a topic owned by the integration.
 """
 
-from pc2mqtt.integrations.audio import AudioSensor
-from pc2mqtt.integrations.power import PowerControls
-from pc2mqtt.integrations.status import StatusSensors
 
-
-INTEGRATION_TYPES = (AudioSensor, PowerControls, StatusSensors)
+def integration_types(system):
+    # Explicit imports are visible to PyInstaller without dynamic plugin scanning.
+    if system.lower() == 'linux':
+        from .linux import INTEGRATION_TYPES
+    elif system.lower() == 'windows':
+        from .windows import INTEGRATION_TYPES
+    else:
+        raise NotImplementedError(f'Integrations are not supported on {system}')
+    return INTEGRATION_TYPES
