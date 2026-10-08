@@ -56,6 +56,7 @@ class ReleaseBuildTests(unittest.TestCase):
         self.assertTrue(asset.exists())
         command = run.call_args_list[0].args[0]
         self.assertIn('--windowed', command)
+        self.assertEqual(command[command.index('--exclude-module') + 1], 'pc2mqtt.integrations.linux')
         self.assertIn('pystray._win32', command)
         metadata = Path(command[command.index('--version-file') + 1]).read_text()
         ast.parse(metadata)
@@ -72,8 +73,10 @@ class ReleaseBuildTests(unittest.TestCase):
              patch.object(build.shutil, 'which', return_value='/usr/bin/tool'), \
              patch.object(build.os, 'confstr', return_value='glibc 2.35', create=True), \
              patch.object(build.os, 'chdir'), \
-             patch.object(build.subprocess, 'run', side_effect=self.fake_run):
+             patch.object(build.subprocess, 'run', side_effect=self.fake_run) as run:
             asset = build.build('deb', 'v2.3.4-rc.1')
+        command = run.call_args_list[0].args[0]
+        self.assertEqual(command[command.index('--exclude-module') + 1], 'pc2mqtt.integrations.windows')
         self.assertEqual(asset.name, 'pc2mqtt-v2.3.4-rc.1-linux-amd64.deb')
         control = (self.root / 'build/deb-root/DEBIAN/control').read_text()
         self.assertIn('Version: 2.3.4~rc.1\n', control)

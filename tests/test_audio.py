@@ -6,11 +6,14 @@ from types import SimpleNamespace
 from unittest.mock import ANY, Mock, patch
 
 from pc2mqtt import PC2MQTT
-from pc2mqtt.integrations.audio import AudioSensor, is_audio_playing
+from pc2mqtt.integrations._shared import PlaybackSensor
+from pc2mqtt.integrations.linux.audio import Backend as LinuxAudio
+from pc2mqtt.integrations.windows.audio import Backend as WindowsAudio
+from pc2mqtt.integrations import integration_types
 
 
 class AudioDetectionTests(unittest.TestCase):
-    @patch("pc2mqtt.integrations.audio.subprocess.run")
+    @patch("pc2mqtt.integrations.linux.audio.subprocess.run")
     def test_linux_output_states(self, run):
         for output, expected in [
             ("", False),
@@ -21,24 +24,24 @@ class AudioDetectionTests(unittest.TestCase):
         ]:
             with self.subTest(output=output):
                 run.return_value.stdout = output
-                self.assertEqual(is_audio_playing("Linux"), expected)
+                self.assertEqual(LinuxAudio().is_audio_playing(), expected)
         self.assertEqual(run.call_args.args[0], ["pactl", "list", "short", "sinks"])
         self.assertTrue(run.call_args.kwargs["check"])
         self.assertEqual(run.call_args.kwargs["timeout"], 5)
         self.assertEqual(run.call_args.kwargs["env"]["LC_ALL"], "C")
 
-    @patch("pc2mqtt.integrations.audio.subprocess.run")
+    @patch("pc2mqtt.integrations.linux.audio.subprocess.run")
     def test_linux_errors_propagate(self, run):
         for error in [FileNotFoundError(), subprocess.TimeoutExpired("pactl", 5),
                       subprocess.CalledProcessError(1, "pactl")]:
             with self.subTest(error=error):
                 run.side_effect = error
                 with self.assertRaises(type(error)):
-                    is_audio_playing("Linux")
+                    LinuxAudio().is_audio_playing()
 
     def test_unsupported_platform(self):
         with self.assertRaises(NotImplementedError):
-            is_audio_playing("Darwin")
+            integration_types("Darwin")
 
     def test_windows_outputs_and_com_cleanup(self):
         com = Mock()
@@ -67,10 +70,10 @@ class AudioDetectionTests(unittest.TestCase):
                         outputs.append(output)
                     devices.GetCount.return_value = len(outputs)
                     devices.Item.side_effect = outputs
-                    self.assertEqual(is_audio_playing("Windows"), expected)
+                    self.assertEqual(WindowsAudio().is_audio_playing(), expected)
             devices.GetCount.side_effect = RuntimeError("audio service unavailable")
             with self.assertRaises(RuntimeError):
-                is_audio_playing("Windows")
+                WindowsAudio().is_audio_playing()
         self.assertEqual(com.CoInitialize.call_count, 4)
         self.assertEqual(com.CoUninitialize.call_count, 4)
         utilities.GetDeviceEnumerator.return_value.EnumAudioEndpoints.assert_called_with(0, 1)
@@ -79,11 +82,11 @@ class AudioDetectionTests(unittest.TestCase):
 class AudioSupportTests(unittest.TestCase):
     def setUp(self):
         self.client = Mock()
-        self.sensor = AudioSensor(self.client, 'pc', {'model': 'Linux', 'name': 'Computer PC'}, 'connection', Mock())
+        self.sensor = PlaybackSensor(self.client, 'pc', {'model': 'Linux', 'name': 'Computer PC'}, 'connection', Mock(), LinuxAudio())
 
     def test_missing_pactl_removes_retained_entity_and_skips_polling(self):
-        with patch('pc2mqtt.integrations.audio.shutil.which', return_value=None), \
-             patch('pc2mqtt.integrations.audio.is_audio_playing') as detect:
+        with patch('pc2mqtt.integrations.linux.audio.shutil.which', return_value=None), \
+             patch('pc2mqtt.integrations.linux.audio.Backend.is_audio_playing') as detect:
             self.sensor.config()
             messages = self.client.publish.call_args_list
             self.assertEqual({c.kwargs['topic'] for c in messages},
@@ -100,11 +103,11 @@ class AudioSupportTests(unittest.TestCase):
                 'Audio playing disabled: %s', 'pactl is not installed or not on PATH')
 
     def test_pactl_removed_during_runtime_removes_entity(self):
-        with patch('pc2mqtt.integrations.audio.shutil.which', return_value='/usr/bin/pactl'):
+        with patch('pc2mqtt.integrations.linux.audio.shutil.which', return_value='/usr/bin/pactl'):
             self.sensor.config()
         self.client.reset_mock()
-        with patch('pc2mqtt.integrations.audio.shutil.which', return_value=None), \
-             patch('pc2mqtt.integrations.audio.is_audio_playing', side_effect=FileNotFoundError()) as detect:
+        with patch('pc2mqtt.integrations.linux.audio.shutil.which', return_value=None), \
+             patch('pc2mqtt.integrations.linux.audio.Backend.is_audio_playing', side_effect=FileNotFoundError()) as detect:
             self.sensor.poll()
             self.sensor.poll()
             detect.assert_called_once()
@@ -112,11 +115,11 @@ class AudioSupportTests(unittest.TestCase):
         self.assertTrue(all(c.kwargs['payload'] == '' for c in self.client.publish.call_args_list))
 
     def test_installing_pactl_restores_discovery_on_refresh(self):
-        with patch('pc2mqtt.integrations.audio.shutil.which', return_value=None):
+        with patch('pc2mqtt.integrations.linux.audio.shutil.which', return_value=None):
             self.sensor.config()
         self.client.reset_mock()
-        with patch('pc2mqtt.integrations.audio.shutil.which', return_value='/usr/bin/pactl'), \
-             patch('pc2mqtt.integrations.audio.is_audio_playing', return_value=False):
+        with patch('pc2mqtt.integrations.linux.audio.shutil.which', return_value='/usr/bin/pactl'), \
+             patch('pc2mqtt.integrations.linux.audio.Backend.is_audio_playing', return_value=False):
             self.sensor.config()
             self.sensor.poll()
         messages = {c.kwargs['topic']: c.kwargs['payload'] for c in self.client.publish.call_args_list}
@@ -126,16 +129,19 @@ class AudioSupportTests(unittest.TestCase):
 
 class MQTTTests(unittest.TestCase):
     def setUp(self):
-        supported = patch('pc2mqtt.integrations.audio.audio_supported', return_value=True)
+        supported = patch('pc2mqtt.integrations.linux.audio.Backend.supported_features', return_value={'audio_playing', 'volume', 'mute'})
         supported.start()
         self.addCleanup(supported.stop)
-        with patch("pc2mqtt.mqtt.Client"), patch("pc2mqtt.platform.node", return_value="desktop"):
+        with patch("pc2mqtt.mqtt.Client"), patch("pc2mqtt.platform.node", return_value="desktop"), patch("pc2mqtt.platform.system", return_value="Linux"):
             self.pc = PC2MQTT("broker")
+        self.pc.integrations[1].backend = Mock()
+        self.pc.integrations[1].backend.supported_features.return_value = {'shutdown', 'restart', 'sleep', 'displays_off'}
+        self.pc.integrations[0].backend.read = Mock(return_value=0)
         self.pc.integrations[-1].backend = Mock()
         self.pc.integrations[-1].backend.supported_features.return_value = set(self.pc.integrations[-1].topics)
         self.pc.integrations[-1].poll = Mock()
         self.pc.logger = Mock()
-        self.audio = self.pc.integrations[0]
+        self.audio = self.pc.integrations[0].playback
         self.audio.logger = Mock()
         self.audio.config()
         self.pc.client.publish.reset_mock()
@@ -174,8 +180,8 @@ class MQTTTests(unittest.TestCase):
 
     def sample_audio(self, now, playing):
         self.pc.client.reset_mock()
-        with patch("pc2mqtt.integrations.audio.time.monotonic", return_value=now), patch(
-            "pc2mqtt.integrations.audio.is_audio_playing", return_value=playing,
+        with patch("pc2mqtt.integrations._shared.time.monotonic", return_value=now), patch(
+            "pc2mqtt.integrations.linux.audio.Backend.is_audio_playing", return_value=playing,
             side_effect=playing if isinstance(playing, Exception) else None,
         ):
             self.audio.poll()
@@ -242,7 +248,7 @@ class MQTTTests(unittest.TestCase):
 
     @patch("pc2mqtt.time.sleep", side_effect=[None, None, KeyboardInterrupt])
     def test_polling_checks_audio_every_second(self, sleep):
-        with patch.object(self.audio, "poll") as audio, patch.object(self.pc.integrations[2], "poll"):
+        with patch.object(self.pc.integrations[0], "poll") as audio, patch.object(self.pc.integrations[2], "poll"):
             with self.assertRaises(KeyboardInterrupt):
                 self.pc.state()
         self.assertEqual(audio.call_count, 3)
@@ -253,7 +259,7 @@ class MQTTTests(unittest.TestCase):
 class IntegrationRegistrationTests(unittest.TestCase):
     def test_registered_integrations_receive_context_and_lifecycle_calls(self):
         factories = [Mock(), Mock()]
-        with patch("pc2mqtt.INTEGRATION_TYPES", factories), patch("pc2mqtt.mqtt.Client"):
+        with patch("pc2mqtt.integration_types", return_value=factories), patch("pc2mqtt.mqtt.Client"):
             pc = PC2MQTT("broker")
         for factory in factories:
             factory.assert_called_once_with(
@@ -269,7 +275,7 @@ class IntegrationRegistrationTests(unittest.TestCase):
             factory.return_value.poll.assert_called_once_with()
 
     def test_empty_registry_only_announces_connection(self):
-        with patch("pc2mqtt.INTEGRATION_TYPES", ()), patch("pc2mqtt.mqtt.Client"):
+        with patch("pc2mqtt.integration_types", return_value=()), patch("pc2mqtt.mqtt.Client"):
             pc = PC2MQTT("broker")
         pc.on_connect(pc.client, None, None, 0)
         with patch("pc2mqtt.time.sleep", side_effect=KeyboardInterrupt):

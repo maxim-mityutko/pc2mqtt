@@ -3,7 +3,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import ANY, Mock, patch
 
-from pc2mqtt.integrations.power import PowerControls, _power_command
+from pc2mqtt.integrations._shared import PowerControls
+from pc2mqtt.integrations.linux.power import Backend as LinuxPower
+from pc2mqtt.integrations.windows.power import Backend as WindowsPower
 
 
 class PowerTests(unittest.TestCase):
@@ -11,10 +13,14 @@ class PowerTests(unittest.TestCase):
         self.client = Mock()
         self.logger = Mock()
         self.device = {"name": "Computer DESKTOP", "model": "Linux", "identifiers": ["desktop"]}
-        self.power = PowerControls(self.client, "desktop", self.device, "pc2mqtt/desktop/availability", self.logger)
+        self.backend = LinuxPower()
+        self.backend.supported_features = Mock(return_value={'shutdown', 'restart', 'sleep'})
+        self.power = PowerControls(self.client, "desktop", self.device, "pc2mqtt/desktop/availability", self.logger, self.backend)
+        self.power.config()
+        self.client.reset_mock()
         self.process = Mock()
         self.process.poll.return_value = None
-        patcher = patch("pc2mqtt.integrations.power.subprocess.Popen", return_value=self.process)
+        patcher = patch("pc2mqtt.integrations._shared.subprocess.Popen", return_value=self.process)
         self.launch = patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -55,14 +61,15 @@ class PowerTests(unittest.TestCase):
         for action in ("shutdown", "sleep", "restart"):
             with self.subTest(action=action):
                 self.power = PowerControls(
-                    self.client, "desktop", self.device, "pc2mqtt/desktop/availability", self.logger,
+                    self.client, "desktop", self.device, "pc2mqtt/desktop/availability", self.logger, self.backend,
                 )
+                self.power.config()
                 self.launch.reset_mock()
                 self.client.reset_mock()
                 self.assertTrue(self.power.on_message(self.message(action)))
                 self.launch.assert_not_called()
                 self.power.poll()
-                self.launch.assert_called_once_with(_power_command("Linux", action))
+                self.launch.assert_called_once_with(LinuxPower().command(action))
                 self.client.publish.assert_not_called()
                 self.power.on_message(self.message(action))
                 self.power.poll()
@@ -117,15 +124,13 @@ class PowerTests(unittest.TestCase):
             ("restart", ["shutdown", "-r", "now"], ["shutdown", "/r", "/t", "0"]),
             ("sleep", ["systemctl", "suspend"], None),
         ]:
-            self.assertEqual(_power_command("Linux", action), linux)
+            self.assertEqual(LinuxPower().command(action), linux)
             if windows:
-                self.assertEqual(_power_command("Windows", action), windows)
-        sleep = _power_command("Windows", "sleep")
+                self.assertEqual(WindowsPower().command(action), windows)
+        sleep = WindowsPower().command("sleep")
         self.assertEqual(sleep[:4], ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command"])
         self.assertIn("PowerState]::Suspend, $false, $false", sleep[-1])
         self.assertIn("exit 1", sleep[-1])
-        with self.assertRaises(NotImplementedError):
-            _power_command("Darwin", "sleep")
 
 
 if __name__ == "__main__":

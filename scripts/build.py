@@ -80,9 +80,12 @@ def build(kind, tag=None):
             "--windowed", "--hidden-import", "pystray._win32",
             "--version-file", str(windows_version_file(version, numeric)),
         ]
+    other_platform = 'linux' if kind == 'exe' else 'windows'
     subprocess.run([
         sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm",
-        "--onefile", "--name", "pc2mqtt", "--paths", ".", *version_options, "pc2mqtt/app.py",
+        "--onefile", "--name", "pc2mqtt", "--paths", ".",
+        "--exclude-module", f"pc2mqtt.integrations.{other_platform}",
+        *version_options, "pc2mqtt/app.py",
     ], check=True)
     executable = ROOT / "dist" / ("pc2mqtt.exe" if kind == "exe" else "pc2mqtt")
     subprocess.run([str(executable), "--help"], check=True)

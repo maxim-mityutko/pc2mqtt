@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 import paho.mqtt.client as mqtt
 
 from pc2mqtt import PC2MQTT
-from pc2mqtt.integrations.status import StatusSensors
+from pc2mqtt.integrations._shared import HeartbeatSensors
 from pc2mqtt.publishing import expiry_properties
 
 
@@ -14,12 +14,12 @@ class StatusTests(unittest.TestCase):
     def setUp(self):
         self.client = Mock()
         self.client.socket.return_value.getsockname.return_value = ("192.168.1.10", 1234)
-        self.sensor = StatusSensors(
+        self.sensor = HeartbeatSensors(
             self.client, "desktop", {"name": "Computer DESKTOP"}, "connection", Mock(),
         )
 
     def poll(self, now):
-        with patch("pc2mqtt.integrations.status.time.monotonic", return_value=now):
+        with patch("pc2mqtt.integrations._shared.time.monotonic", return_value=now):
             self.sensor.poll()
 
     def test_discovery_and_offline_last_seen(self):
@@ -85,7 +85,7 @@ class RetentionTests(unittest.TestCase):
             self.assertEqual(call.kwargs['properties'].MessageExpiryInterval, 43200)
 
     def test_discovery_and_availability_refresh(self):
-        with patch('pc2mqtt.mqtt.Client'), patch('pc2mqtt.INTEGRATION_TYPES', ()):
+        with patch('pc2mqtt.mqtt.Client'), patch('pc2mqtt.integration_types', return_value=()):
             pc = PC2MQTT('broker')
         with patch('pc2mqtt.time.monotonic', return_value=0):
             pc.on_connect(pc.client, None, None, 0, None)

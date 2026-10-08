@@ -5,7 +5,7 @@ import time
 import paho.mqtt.client as mqtt
 from paho.mqtt.packettypes import PacketTypes
 
-from pc2mqtt.integrations import INTEGRATION_TYPES
+from pc2mqtt.integrations import integration_types
 from pc2mqtt.publishing import MESSAGE_EXPIRY_SECONDS, expiry_properties, publish
 
 
@@ -57,7 +57,7 @@ class PC2MQTT:
         self.logger = self._logger
         self.integrations = [
             integration_type(self.client, node, self.device, self.availability_topic, self.logger)
-            for integration_type in INTEGRATION_TYPES
+            for integration_type in integration_types(self.device["model"])
         ]
         self.logger.info("System: %s / Node: %s", self.device["model"], node)
         self.logger.info(f"Connecting to '{self.host}:{self.port}'")

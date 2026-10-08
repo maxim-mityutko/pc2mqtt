@@ -44,18 +44,44 @@ On Linux, apply edits with `systemctl --user daemon-reload` and
 
 Connection availability: `pc2mqtt/<node>/availability` (`online` / `offline`).
 Discovery, state, and availability are retained for 12 hours; audio state expires
-after 90 seconds. Details: [audio](pc2mqtt/integrations/audio.py),
-[power](pc2mqtt/integrations/power.py), [status](pc2mqtt/integrations/status.py),
-[desktop](pc2mqtt/integrations/desktop/).
+after 90 seconds. Integrations live in matching [Linux](pc2mqtt/integrations/linux/)
+and [Windows](pc2mqtt/integrations/windows/) packages:
 
-Desktop sensors and volume/mute are checked every ten seconds; changes publish
-immediately after a check, with a one-minute refresh. Volume/mute feedback uses
-the corresponding `/state` topic. Unsupported desktop features and audio playback without `pactl` on Linux are
-omitted from discovery; temporary backend
-failures mark supported entities unavailable. Old unsupported discovery entries
-are removed on reconnect or discovery refresh. Disabled features log an INFO
-message with the reason; unchanged reasons are not repeated.
-Windows supports all desktop features; uptime may span Fast Startup shutdowns.
+| Module | Entities |
+| --- | --- |
+| `power` | Shutdown, restart, sleep, turn off displays |
+| `audio` | Audio playing, volume, mute |
+| `status` | IP address, last seen, uptime |
+| `user` | Session locked, user idle time, lock session |
+
+Only supported capabilities are discovered and subscribed to. Checks apply per
+entity, including power commands, audio dependencies, session/display environment,
+and native APIs. Unsupported entities have their retained discovery, state, and
+availability cleared and command subscriptions removed. Capabilities are checked
+again on reconnect and discovery refresh; newly available features then appear.
+Temporary backend failures keep supported entities discovered but unavailable
+where per-entity availability is provided. Power command failures are logged.
+Disabled features log an INFO message with the reason; unchanged reasons are not
+repeated. Commands require the running user's permissions; support detection does
+not execute power or lock actions to test them.
+
+Session sensors, uptime, and volume/mute are checked every ten seconds; changes
+publish after each check, with a one-minute refresh. Volume/mute feedback uses the
+corresponding `/state` topic and controls the default output. IP address and last
+seen update every minute; last seen remains readable while the computer is offline.
+
+Audio playback is checked every second. Two seconds of sustained playback trigger
+an early `ON`; `OFF` is sent at the next minute update. Muted or silent active
+streams count as playback. Linux requires `pactl` and PulseAudio or PipeWire's
+PulseAudio compatibility server; direct ALSA playback is not covered. Windows
+checks Core Audio sessions across all active outputs. Detection failures mark
+playback unavailable and are retried.
+
+Power commands run asynchronously. Retained commands are ignored, and queued
+commands are discarded on reconnect. Linux shutdown/restart require `shutdown`;
+sleep requires `systemctl` and a running systemd system manager. Windows uses
+`shutdown` and Windows PowerShell for sleep. Sleep also requires hardware/OS
+support. Windows uptime may span Fast Startup shutdowns.
 Linux lock state depends on the desktop updating loginctl's `LockedHint`; idle time
 supports GNOME or X11, and display-off supports X11 or Sway. Other Wayland desktops
 omit unsupported idle/display controls. The user service needs the desktop's display/session
@@ -139,15 +165,24 @@ Run from source: `poetry run python -m pc2mqtt.app --host <broker>`.
 
 ## Adding integrations
 
-Add a module under `pc2mqtt/integrations/` and register its class in
-[`INTEGRATION_TYPES`](pc2mqtt/integrations/__init__.py). Constructors receive
+Both `pc2mqtt/integrations/linux/` and `pc2mqtt/integrations/windows/` contain
+`power.py`, `audio.py`, `status.py`, and `user.py`. Put native operations and
+capability detection in the appropriate platform/domain module. Reusable MQTT
+lifecycle code lives in [`_shared.py`](pc2mqtt/integrations/_shared.py); Linux session
+detection and Windows API binding use private helpers inside their platform packages.
+
+Each platform's `__init__.py` explicitly registers its integration classes.
+[`integration_types(system)`](pc2mqtt/integrations/__init__.py) selects only the
+current OS package. Constructors receive
 `(client, node, device, connection_availability_topic, logger)`.
 
-- `config()`: publish discovery and subscribe on each MQTT connection.
+- `config()`: recheck capabilities, publish discovery, and update subscriptions.
 - `poll()`: called about once a second; manage timing and backend errors here.
-- Optional `on_message(message)`: handle commands and return `True` for owned topics.
+- `on_message(message)`: handle commands and return `True` for owned topics.
 
-Keep topics and platform logic in the integration; the app owns MQTT and polling.
+Keep entity ownership within its domain and preserve existing MQTT topics and
+unique IDs when moving code. Add capability tests for missing dependencies,
+unsupported environments, and recovery alongside backend and lifecycle tests.
 
 ## Release builds
 
