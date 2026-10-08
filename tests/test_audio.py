@@ -80,6 +80,7 @@ class MQTTTests(unittest.TestCase):
     def setUp(self):
         with patch("pc2mqtt.mqtt.Client"), patch("pc2mqtt.platform.node", return_value="desktop"):
             self.pc = PC2MQTT("broker")
+        self.pc.integrations[-1].poll = Mock()
         self.pc.logger = Mock()
         self.audio = self.pc.integrations[0]
         self.audio.logger = Mock()
@@ -91,7 +92,10 @@ class MQTTTests(unittest.TestCase):
         for _ in range(2):
             self.pc.client.reset_mock()
             self.pc.on_connect(self.pc.client, None, None, 0)
-            audio, legacy, shutdown, sleep, restart, ip, last_seen, connection = self.publications()
+            publications = {item['topic']: item for item in self.publications()}
+            audio = publications['homeassistant/binary_sensor/desktop/audio_playing/config']
+            shutdown = publications['homeassistant/button/desktop/shutdown/config']
+            connection = publications['pc2mqtt/desktop/availability']
             self.assertEqual(connection["topic"], "pc2mqtt/desktop/availability")
             self.assertEqual(connection["payload"], "online")
             sensor = json.loads(audio["payload"])
@@ -107,7 +111,7 @@ class MQTTTests(unittest.TestCase):
                 {"topic": "pc2mqtt/desktop/availability"},
                 {"topic": "homeassistant/binary_sensor/desktop/audio_playing/availability"},
             ])
-            self.assertEqual(self.pc.client.subscribe.call_count, 3)
+            self.assertEqual(self.pc.client.subscribe.call_count, 7)
 
     def test_failed_connection_does_not_announce(self):
         self.pc.on_connect(self.pc.client, None, None, 5)

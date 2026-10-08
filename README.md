@@ -24,7 +24,7 @@ On Linux, apply edits with `systemctl --user daemon-reload` and
 
 ## Actions and Sensors
 
-`<node>` is the lowercase hostname. Send action payloads **without retain**.
+`<node>` is the lowercase hostname. Send action and control payloads **without retain**.
 
 | Entity | Type | Description / payload | MQTT topic |
 | --- | --- | --- | --- |
@@ -34,11 +34,28 @@ On Linux, apply edits with `systemctl --user daemon-reload` and
 | Audio playing | Sensor | Active playback: `ON` / `OFF` | `homeassistant/binary_sensor/<node>/audio_playing/state` |
 | IP address | Sensor | Local IPv4/IPv6 used to reach the broker | `homeassistant/sensor/<node>/ip_address/state` |
 | Last seen | Sensor | UTC heartbeat, updated every minute | `homeassistant/sensor/<node>/last_seen/state` |
+| Session locked | Sensor | Session lock state: `ON` / `OFF` | `homeassistant/binary_sensor/<node>/session_locked/state` |
+| User idle time | Sensor | Idle duration; seconds on MQTT, hours in HA | `homeassistant/sensor/<node>/idle_time/state` |
+| Uptime | Sensor | OS uptime; seconds on MQTT, hours in HA | `homeassistant/sensor/<node>/uptime/state` |
+| Volume | Control | Default output volume; send `0`–`100` | `homeassistant/number/<node>/volume/set` |
+| Mute | Control | Mute default output; send `ON` / `OFF` | `homeassistant/switch/<node>/mute/set` |
+| Lock session | Action | Lock desktop; send `PRESS` | `homeassistant/button/<node>/lock_session/set` |
+| Turn off displays | Action | Switch off screens; send `PRESS` | `homeassistant/button/<node>/displays_off/set` |
 
 Connection availability: `pc2mqtt/<node>/availability` (`online` / `offline`).
 Discovery, state, and availability are retained for 12 hours; audio state expires
 after 90 seconds. Details: [audio](pc2mqtt/integrations/audio.py),
-[power](pc2mqtt/integrations/power.py), [status](pc2mqtt/integrations/status.py).
+[power](pc2mqtt/integrations/power.py), [status](pc2mqtt/integrations/status.py),
+[desktop](pc2mqtt/integrations/desktop/).
+
+Desktop sensors and volume/mute are checked every ten seconds; changes publish
+immediately after a check, with a one-minute refresh. Volume/mute feedback uses
+the corresponding `/state` topic. Unsupported features report unavailable individually.
+Windows supports all desktop features; uptime may span Fast Startup shutdowns.
+Linux lock state depends on the desktop updating loginctl's `LockedHint`; idle time
+supports GNOME or X11, and display-off supports X11 or Sway. Other Wayland desktops
+may lack idle/display control. The user service needs the desktop's display/session
+environment (`DISPLAY`/`XAUTHORITY` for X11, `SWAYSOCK` for Sway).
 
 ## Installation
 
@@ -71,7 +88,8 @@ folder. Remove older manual startup entries to avoid duplicate instances.
 
 Requires Bash, `curl`, a systemd user session, and glibc 2.35+ (Ubuntu 22.04+).
 Run from your desktop terminal **without sudo**; the installer uses `sudo` only
-for packages, including `pulseaudio-utils` for audio detection.
+for packages, including audio and desktop helpers (`pulseaudio-utils`,
+`x11-xserver-utils`, `xprintidle`, and `libglib2.0-bin`).
 
 ```bash
 bash -c 'release=$(curl -fsSL -o /dev/null -w "%{url_effective}" https://github.com/maxim-mityutko/pc2mqtt/releases/latest) && tag=${release##*/} && installer=$(mktemp) && curl -fsSL --retry 3 "https://github.com/maxim-mityutko/pc2mqtt/releases/download/$tag/install-$tag.sh" -o "$installer" && bash "$installer"; result=$?; rm -f -- "${installer:-}"; exit "$result"'

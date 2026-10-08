@@ -92,7 +92,7 @@ elif name == 'systemctl' and os.environ.get('INSTALL_TEST_FAILURE') == 'session'
         self.assertEqual(commands[-1], ['systemctl', '--user', 'restart', 'pc2mqtt.service'])
         install = next(c for c in commands if c[:3] == ['sudo', 'apt-get', 'install'])
         self.assertIn('pulseaudio-utils', install)
-        self.assertFalse(Path(install[-2]).exists(), 'Temporary package should be cleaned up')
+        self.assertFalse(Path(next(arg for arg in install if arg.endswith('.deb'))).exists(), 'Temporary package should be cleaned up')
         result = self.run_installer('::1\n2883\n\n\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('--host ::1 --port 2883', self.service.read_text())

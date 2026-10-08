@@ -13,7 +13,7 @@ class DisplayNameTests(unittest.TestCase):
         pc.config()
         messages = {
             call.kwargs['topic']: json.loads(call.kwargs['payload'])
-            for call in pc.client.publish.call_args_list if call.kwargs['payload']
+            for call in pc.client.publish.call_args_list if call.kwargs['payload'] and call.kwargs['topic'].endswith('/config')
         }
         return pc, messages
 
@@ -25,7 +25,7 @@ class DisplayNameTests(unittest.TestCase):
         self.assertEqual(original.device['identifiers'], renamed.device['identifiers'])
         self.assertEqual(original.availability_topic, renamed.availability_topic)
         self.assertEqual(original_messages.keys(), renamed_messages.keys())
-        self.assertEqual(len(renamed_messages), 6)
+        self.assertEqual(len(renamed_messages), 13)
         for topic, message in renamed_messages.items():
             with self.subTest(topic=topic):
                 self.assertEqual(message['device']['name'], 'Computer foo')
