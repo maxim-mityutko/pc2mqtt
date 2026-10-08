@@ -1,9 +1,12 @@
 # pc2mqtt
 
-Expose Windows and Linux computer controls and sensors to Home Assistant via MQTT.
-Requires an **MQTT 5** broker.
+Windows and Linux controls and sensors for Home Assistant. Requires **MQTT 5**.
 
-## Command Line Arguments
+## Command line
+
+```shell
+pc2mqtt --host broker.local --display-name "Living Room"
+```
 
 | Option | Description | Default |
 | --- | --- | --- |
@@ -13,18 +16,13 @@ Requires an **MQTT 5** broker.
 | `--keepalive` | Keepalive in seconds; `0` disables it | `60` |
 | `--tray` | Windows tray mode | Enabled in the Windows executable |
 
-`pc2mqtt --host broker.local --display-name foo` displays **Computer foo**.
-Quote spaces on the command line: `--display-name "Living Room"`. Display names
-preserve capitalization; MQTT topics and entity IDs still use the real hostname.
+- Display name: **Computer Living Room**; topics and entity IDs use the real hostname.
+- Installers prompt for settings. Rerun to update them, or edit the Windows startup shortcut / Linux service's `ExecStart`.
+- After editing the Linux service: `systemctl --user daemon-reload && systemctl --user restart pc2mqtt`.
 
-Installers prompt for these settings. To change startup settings manually, add
-`--display-name foo` to the Windows shortcut or Linux service's `ExecStart`.
-On Linux, apply edits with `systemctl --user daemon-reload` and
-`systemctl --user restart pc2mqtt`.
+## Actions and sensors
 
-## Actions and Sensors
-
-`<node>` is the lowercase hostname. Send action and control payloads **without retain**.
+`<node>` is the lowercase hostname. Send commands **without retain**.
 
 | Entity | Type | Description / payload | MQTT topic |
 | --- | --- | --- | --- |
@@ -42,60 +40,36 @@ On Linux, apply edits with `systemctl --user daemon-reload` and
 | Lock session | Action | Lock desktop; send `PRESS` | `homeassistant/button/<node>/lock_session/set` |
 | Turn off displays | Action | Switch off screens; send `PRESS` | `homeassistant/button/<node>/displays_off/set` |
 
-Connection availability: `pc2mqtt/<node>/availability` (`online` / `offline`).
-Discovery, state, and availability are retained for 12 hours; audio state expires
-after 90 seconds. Integrations live in matching [Linux](pc2mqtt/integrations/linux/)
-and [Windows](pc2mqtt/integrations/windows/) packages:
-
-| Module | Entities |
+| Behavior | Details |
 | --- | --- |
-| `power` | Shutdown, restart, sleep, turn off displays |
-| `audio` | Audio playing, volume, mute |
-| `status` | IP address, last seen, uptime |
-| `user` | Session locked, user idle time, lock session |
+| Connection availability | `pc2mqtt/<node>/availability`: `online` / `offline` |
+| Retention | Discovery, state, and availability: 12 hours; playback state expires in HA after 90 seconds |
+| Sensor updates | Session, idle, uptime, volume/mute: checked every 10 seconds; changes published, refreshed every minute |
+| Heartbeat | IP and last seen: every minute; last seen remains readable offline |
+| Playback | Checked every second; `ON` after 2 seconds of activity, `OFF` at the next minute update; muted/silent streams count |
+| Controls | Volume/mute target the default output; feedback uses `/state` |
+| Capabilities | Unsupported entities are removed; rechecked on reconnect/discovery refresh; temporary failures retain discovery |
+| Commands | Retained commands ignored; queued commands cleared on reconnect; power commands run asynchronously |
 
-Only supported capabilities are discovered and subscribed to. Checks apply per
-entity, including power commands, audio dependencies, session/display environment,
-and native APIs. Unsupported entities have their retained discovery, state, and
-availability cleared and command subscriptions removed. Capabilities are checked
-again on reconnect and discovery refresh; newly available features then appear.
-Temporary backend failures keep supported entities discovered but unavailable
-where per-entity availability is provided. Power command failures are logged.
-Disabled features log an INFO message with the reason; unchanged reasons are not
-repeated. Commands require the running user's permissions; support detection does
-not execute power or lock actions to test them.
+### Platform requirements
 
-Session sensors, uptime, and volume/mute are checked every ten seconds; changes
-publish after each check, with a one-minute refresh. Volume/mute feedback uses the
-corresponding `/state` topic and controls the default output. IP address and last
-seen update every minute; last seen remains readable while the computer is offline.
+| Feature | Linux | Windows |
+| --- | --- | --- |
+| Audio | `pactl` + PulseAudio or PipeWire's PulseAudio compatibility; no direct ALSA | Core Audio; playback checked across all active outputs |
+| Power | `shutdown`; sleep needs `systemctl` and running systemd | `shutdown`; Windows PowerShell for sleep |
+| Session lock | `loginctl`; lock state requires desktop `LockedHint` reporting | Logged-in user session |
+| Idle time | GNOME + `gdbus`, or X11 + `xprintidle` | Last-input API |
+| Display off | X11 + `xset`, or Sway + `swaymsg` | Native display-power API |
 
-Audio playback is checked every second. Two seconds of sustained playback trigger
-an early `ON`; `OFF` is sent at the next minute update. Muted or silent active
-streams count as playback. Linux requires `pactl` and PulseAudio or PipeWire's
-PulseAudio compatibility server; direct ALSA playback is not covered. Windows
-checks Core Audio sessions across all active outputs. Detection failures mark
-playback unavailable and are retried.
-
-Power commands run asynchronously. Retained commands are ignored, and queued
-commands are discarded on reconnect. Linux shutdown/restart require `shutdown`;
-sleep requires `systemctl` and a running systemd system manager. Windows uses
-`shutdown` and Windows PowerShell for sleep. Sleep also requires hardware/OS
-support. Windows uptime may span Fast Startup shutdowns.
-Linux lock state depends on the desktop updating loginctl's `LockedHint`; idle time
-supports GNOME or X11, and display-off supports X11 or Sway. Other Wayland desktops
-omit unsupported idle/display controls. The user service needs the desktop's display/session
-environment (`DISPLAY`/`XAUTHORITY` for X11, `SWAYSOCK` for Sway).
+Commands require user permissions and OS/hardware support. Linux services need the
+session environment (`DISPLAY`/`XAUTHORITY` or `SWAYSOCK`). Windows uptime may span Fast Startup shutdowns.
 
 ## Installation
 
-Run as your desktop user. Installers download the latest stable release, start
-the app, and enable startup at login. Rerun to update or change settings; the
-running installed copy is stopped before replacement and restarted afterward.
-
-Enter the broker hostname/IP without `mqtt://`. Press Enter for port **1883**,
-display name **hostname**, and keepalive **60 seconds**. In installer prompts,
-names with spaces need no quotes.
+- Run as your **desktop user**. Installers start the app and enable startup at login.
+- Rerun to update; the installed instance is stopped and restarted automatically.
+- Broker: hostname/IP without `mqtt://`. Enter accepts defaults; names with spaces need no quotes in prompts.
+- One-liners use the latest completed stable release. For a specific release/prerelease, use its `install-<tag>.ps1` or `install-<tag>.sh` asset.
 
 ### Windows x64
 
@@ -105,127 +79,100 @@ Run in **PowerShell**, without administrator privileges:
 & { $ErrorActionPreference = 'Stop'; $release = Invoke-RestMethod 'https://api.github.com/repos/maxim-mityutko/pc2mqtt/releases/latest'; $tag = $release.tag_name; $installer = Join-Path $env:TEMP ('pc2mqtt-' + [guid]::NewGuid() + '.ps1'); try { Invoke-WebRequest -UseBasicParsing "https://github.com/maxim-mityutko/pc2mqtt/releases/download/$tag/install-$tag.ps1" -OutFile $installer; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer } finally { Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue } }
 ```
 
-Installs to `%LOCALAPPDATA%\pc2mqtt` and adds `pc2mqtt.lnk` to `shell:startup`
-(open with `Win + R`). The tray menu provides connection status, **Open log**,
-and **Quit**; logs are in `%LOCALAPPDATA%\pc2mqtt\pc2mqtt.log`.
-Tray mode runs in your desktop session for audio detection and retries unavailable
-broker connections. Source runs can enable it with `--tray`.
+| Item | Location / action |
+| --- | --- |
+| Installation | `%LOCALAPPDATA%\pc2mqtt` |
+| Startup | `pc2mqtt.lnk` in `shell:startup` (open via `Win + R`) |
+| Logs | Tray → **Open log**, or `%LOCALAPPDATA%\pc2mqtt\pc2mqtt.log` |
+| Tray | Connection status, **Open log**, **Quit**; source runs use `--tray` |
+| Uninstall | **Quit**, remove startup shortcut, delete installation folder |
 
-To uninstall, choose **Quit**, remove the Startup shortcut, and delete the install
-folder. Remove older manual startup entries to avoid duplicate instances.
+Remove older startup entries to avoid duplicate instances.
 
 ### Linux x64 (Debian/Ubuntu)
 
 Requires Bash, `curl`, a systemd user session, and glibc 2.35+ (Ubuntu 22.04+).
-Run from your desktop terminal **without sudo**; the installer uses `sudo` only
-for packages, including audio and desktop helpers (`pulseaudio-utils`,
-`x11-xserver-utils`, `xprintidle`, and `libglib2.0-bin`).
+Run **without sudo**; the installer uses it for packages and audio/desktop helpers.
 
 ```bash
 bash -c 'release=$(curl -fsSL -o /dev/null -w "%{url_effective}" https://github.com/maxim-mityutko/pc2mqtt/releases/latest) && tag=${release##*/} && installer=$(mktemp) && curl -fsSL --retry 3 "https://github.com/maxim-mityutko/pc2mqtt/releases/download/$tag/install-$tag.sh" -o "$installer" && bash "$installer"; result=$?; rm -f -- "${installer:-}"; exit "$result"'
 ```
 
-Runs as a systemd user service, restarting after ten seconds if the app exits.
+```bash
+systemctl --user status pc2mqtt         # service status; auto-restarts after 10s
+journalctl --user -u pc2mqtt -f          # logs
+systemctl --user disable --now pc2mqtt  # stop and disable startup
+```
+
+Uninstall after disabling the service:
 
 ```bash
-systemctl --user status pc2mqtt         # check status
-journalctl --user -u pc2mqtt -f          # view logs
-systemctl --user disable --now pc2mqtt  # stop and disable automatic startup
+rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/pc2mqtt.service"
+systemctl --user daemon-reload
+sudo apt remove pc2mqtt
 ```
 
-To uninstall, disable the service above, delete
-`${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/pc2mqtt.service`, run
-`systemctl --user daemon-reload`, then `sudo apt remove pc2mqtt`.
+Installer sources: [Windows](scripts/install.ps1) · [Linux](scripts/install.sh).
 
-One-liners require a completed stable release with installer assets. For a specific
-version or prerelease, run its `install-<tag>.ps1` or `install-<tag>.sh` asset.
-Downloaded installers stay pinned to their release; files in `scripts/` are build
-templates. See [Windows](scripts/install.ps1) and [Linux](scripts/install.sh) installers.
+## Development
 
-## Development and builds
-
-Requires Python 3.11 or 3.12, Poetry (CI: 2.4.1), and GNU Make
-(`choco install make` on Windows). Linux builds also need `binutils` and `dpkg-dev`.
+| Requirement | Details |
+| --- | --- |
+| Tools | Python 3.11 or 3.12, Poetry (CI: 2.4.1), GNU Make (`choco install make` on Windows) |
+| Linux builds | `binutils`, `dpkg-dev`; resulting packages need the build host's glibc or newer |
+| Build platform | Build on the target OS; cross-compilation unsupported |
 
 ```shell
-make setup                   # create .venv and install poetry.lock dependencies
-make test                    # run the pytest suite
-make build-exe               # versioned Windows executable and installer in dist/
-make build-deb               # versioned Debian package and installer in dist/
+make setup                                  # create .venv; install locked dependencies
+make test                                   # pytest suite
+poetry run pytest tests/test_audio.py -v     # one test module
+poetry run python -m pc2mqtt.app --host broker.local
+make build-exe                              # Windows executable + installer in dist/
+make build-deb                              # Debian package + installer in dist/
 ```
 
-Run setup outside an active virtual environment; use `make setup PYTHON=python3.12`
-to choose Python, or override `POETRY`. Local builds use the `pyproject.toml` version;
-override with `make build-deb RELEASE_TAG=v0.5.0` (or `build-exe`), or pass
-`--tag v0.5.0` to `scripts/build.py`.
+- Run setup outside an active virtual environment; choose Python with `make setup PYTHON=python3.12`.
+- Builds use `pyproject.toml`'s version; override with `RELEASE_TAG=v0.5.0` or `poetry run python scripts/build.py deb --tag v0.5.0`.
+- Tests use pytest classes, fixtures, parametrization, and `unittest.mock` for mocks.
 
-Build on the target OS; cross-compilation is unsupported. Local Debian packages
-require the build host's glibc or newer; releases use Ubuntu 22.04 / glibc 2.35.
-Run from source: `poetry run python -m pc2mqtt.app --host <broker>`.
+### Integrations
 
-## Adding integrations
+Matching [Linux](pc2mqtt/integrations/linux/) and [Windows](pc2mqtt/integrations/windows/) packages:
 
-Both `pc2mqtt/integrations/linux/` and `pc2mqtt/integrations/windows/` contain
-`power.py`, `audio.py`, `status.py`, and `user.py`. Put native operations and
-capability detection in the appropriate platform/domain module. Reusable MQTT
-lifecycle code lives in [`_shared.py`](pc2mqtt/integrations/_shared.py); Linux session
-detection and Windows API binding use private helpers inside their platform packages.
+| Module | Entities |
+| --- | --- |
+| `power` | Shutdown, restart, sleep, turn off displays |
+| `audio` | Audio playing, volume, mute |
+| `status` | IP address, last seen, uptime |
+| `user` | Session locked, user idle time, lock session |
 
-Each platform's `__init__.py` explicitly registers its integration classes.
-[`integration_types(system)`](pc2mqtt/integrations/__init__.py) selects only the
-current OS package. Each domain class inherits the same `EntityIntegration` and
-has a complete `entities` catalog, including playback, power actions, and portable
-status sensors. [`Entity`](pc2mqtt/integrations/_entities.py) defines MQTT metadata,
-command validation, polling intervals, availability, and sampling behavior.
+| Component | Responsibility |
+| --- | --- |
+| Platform/domain modules | Complete entity catalogs, native operations, capability detection |
+| [`_entities.py`](pc2mqtt/integrations/_entities.py) | Entity metadata, discovery payloads, command validation |
+| [`_shared.py`](pc2mqtt/integrations/_shared.py) | `config()`, `poll()`, `on_message()`; one capability snapshot per refresh |
+| [`_state.py`](pc2mqtt/integrations/_state.py) | Playback timing and asynchronous process tracking |
+| [`tests/conftest.py`](tests/conftest.py) | Injectable MQTT clients, backends, clocks, and app factories |
 
-Constructors receive `(client, node, device, connection_availability_topic, logger)`.
-Optional `backend=` and `clock=` arguments allow tests to supply dependencies.
-Power backends also accept `runner=` for launching asynchronous processes.
+Register integrations in each platform's `__init__.py`. Preserve MQTT topics/IDs;
+cover missing dependencies, unsupported environments, and recovery in tests.
 
-- `config()`: take one capability snapshot, publish discovery, update subscriptions,
-  and discard queued commands. Transient detection errors preserve known support.
-- `poll()`: sample due entities and execute queued commands. Playback is checked on
-  every tick (`interval=0`); its debounce and heartbeat remain specialized.
-- `on_message(message)`: validate and queue commands, returning `True` for owned topics.
+## Releases
 
-Backends implement `supported_features()` and `unsupported_reason(key)`, plus only
-the operations their catalog needs: `read(key)` for sensors, `check(key)` for button
-availability, `execute(key, value)` for controls, and `start(key)` for asynchronous
-actions. Portable sensors use catalog readers. New process actions specify their
-metadata and terminal behavior in the catalog, without changing shared lifecycle code.
-[`_state.py`](pc2mqtt/integrations/_state.py) handles playback timing and process
-tracking independently of discovery. Read-only integrations allocate no command queues.
+Publishing a release/prerelease triggers [the release workflow](.github/workflows/release.yml).
 
-Keep MQTT topics and unique IDs stable when moving code. Tests use pytest classes,
-plain assertions, fixtures in `tests/conftest.py`, and parametrized cases. Standard
-library `unittest.mock` is retained for mocks only. Run an individual area with
-`poetry run pytest tests/test_audio.py -v` or select cases with `poetry run pytest -k capability`.
-Add coverage for missing dependencies, unsupported environments, recovery, and
-native operations. App tests can inject `client=` and `integration_factory=`;
-select integrations by role rather than registry position.
+| Asset example | Contents |
+| --- | --- |
+| `install-v0.5.0.ps1`, `install-v0.5.0.sh` | Installers pinned to the release |
+| `pc2mqtt-v0.5.0-windows-x64.exe` | Tray app, no console |
+| `pc2mqtt-v0.5.0-linux-amd64.deb` | Bundled Python; glibc 2.35+; manual install does not enable startup |
 
-## Release builds
-
-Publishing a release or prerelease runs [the release workflow](.github/workflows/release.yml).
-For tag `v0.5.0`, it attaches:
-
-- `install-v0.5.0.ps1` and `install-v0.5.0.sh`
-- `pc2mqtt-v0.5.0-windows-x64.exe` — tray app, no console
-- `pc2mqtt-v0.5.0-linux-amd64.deb` — Debian/Ubuntu, glibc 2.35+
-
-CI runs tests, checks executables with `--help`, and installs/checks the Debian
-package. Reruns replace matching assets. Publish drafts to trigger builds;
-repository release immutability must be disabled. The built-in `GITHUB_TOKEN`
-with `contents: write` handles uploads.
-
-Manual Linux installation (bundles Python; does not enable startup):
+- CI runs tests, executable `--help` checks, and Debian install checks.
+- Publish drafts to trigger builds. Reruns replace assets; release immutability must be disabled.
+- Uploads use `GITHUB_TOKEN` with `contents: write`.
+- Tags: `[v]MAJOR.MINOR.PATCH`, optionally `-rc.1` / `+build.1`; override the project version. Windows numeric components must be ≤65535; Debian maps prereleases to `~rc.1`.
 
 ```shell
 sudo apt install ./pc2mqtt-v0.5.0-linux-amd64.deb
-pc2mqtt --host <broker>
+pc2mqtt --host broker.local
 ```
-
-Release tags override `pyproject.toml` and use `[v]MAJOR.MINOR.PATCH`, optionally
-with `-rc.1` and `+build.1`. Filenames preserve the tag; embedded versions omit `v`.
-Windows numeric versions use `MAJOR.MINOR.PATCH.0` (components ≤65535); Debian maps
-prereleases such as `v0.5.0-rc.1` to `0.5.0~rc.1` so they sort before stable releases.
