@@ -13,9 +13,14 @@ pycaw = { version = "20240210", markers = "sys_platform == 'win32'" }
 pystray = { version = "^0.19.5", markers = "sys_platform == 'win32'" }
 pillow = { version = ">=10,<13", markers = "sys_platform == 'win32'" }
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pyinstaller = "^6.0.0"
+pytest = "^9.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

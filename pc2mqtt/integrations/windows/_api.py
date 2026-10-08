@@ -1,4 +1,5 @@
 """Lazy Win32 function binding, shared without loading unrelated DLLs."""
+
 import ctypes as C
 
 

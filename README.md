@@ -149,7 +149,7 @@ Requires Python 3.11 or 3.12, Poetry (CI: 2.4.1), and GNU Make
 
 ```shell
 make setup                   # create .venv and install poetry.lock dependencies
-make test                    # run the automated tests
+make test                    # run the pytest suite
 make build-exe               # versioned Windows executable and installer in dist/
 make build-deb               # versioned Debian package and installer in dist/
 ```
@@ -173,16 +173,36 @@ detection and Windows API binding use private helpers inside their platform pack
 
 Each platform's `__init__.py` explicitly registers its integration classes.
 [`integration_types(system)`](pc2mqtt/integrations/__init__.py) selects only the
-current OS package. Constructors receive
-`(client, node, device, connection_availability_topic, logger)`.
+current OS package. Each domain class inherits the same `EntityIntegration` and
+has a complete `entities` catalog, including playback, power actions, and portable
+status sensors. [`Entity`](pc2mqtt/integrations/_entities.py) defines MQTT metadata,
+command validation, polling intervals, availability, and sampling behavior.
 
-- `config()`: recheck capabilities, publish discovery, and update subscriptions.
-- `poll()`: called about once a second; manage timing and backend errors here.
-- `on_message(message)`: handle commands and return `True` for owned topics.
+Constructors receive `(client, node, device, connection_availability_topic, logger)`.
+Optional `backend=` and `clock=` arguments allow tests to supply dependencies.
+Power backends also accept `runner=` for launching asynchronous processes.
 
-Keep entity ownership within its domain and preserve existing MQTT topics and
-unique IDs when moving code. Add capability tests for missing dependencies,
-unsupported environments, and recovery alongside backend and lifecycle tests.
+- `config()`: take one capability snapshot, publish discovery, update subscriptions,
+  and discard queued commands. Transient detection errors preserve known support.
+- `poll()`: sample due entities and execute queued commands. Playback is checked on
+  every tick (`interval=0`); its debounce and heartbeat remain specialized.
+- `on_message(message)`: validate and queue commands, returning `True` for owned topics.
+
+Backends implement `supported_features()` and `unsupported_reason(key)`, plus only
+the operations their catalog needs: `read(key)` for sensors, `check(key)` for button
+availability, `execute(key, value)` for controls, and `start(key)` for asynchronous
+actions. Portable sensors use catalog readers. New process actions specify their
+metadata and terminal behavior in the catalog, without changing shared lifecycle code.
+[`_state.py`](pc2mqtt/integrations/_state.py) handles playback timing and process
+tracking independently of discovery. Read-only integrations allocate no command queues.
+
+Keep MQTT topics and unique IDs stable when moving code. Tests use pytest classes,
+plain assertions, fixtures in `tests/conftest.py`, and parametrized cases. Standard
+library `unittest.mock` is retained for mocks only. Run an individual area with
+`poetry run pytest tests/test_audio.py -v` or select cases with `poetry run pytest -k capability`.
+Add coverage for missing dependencies, unsupported environments, recovery, and
+native operations. App tests can inject `client=` and `integration_factory=`;
+select integrations by role rather than registry position.
 
 ## Release builds
 

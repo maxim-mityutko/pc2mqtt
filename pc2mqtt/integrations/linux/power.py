@@ -1,14 +1,24 @@
 """Linux shutdown/suspend commands and X11/Sway display power."""
+
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
-from .._shared import PowerIntegration
+from .._entities import Entity
+from .._shared import EntityIntegration
 from ._session import Session, run
 
 
 class Backend(Session):
+    def __init__(self, *, runner=None):
+        super().__init__()
+        self.runner = runner if runner is not None else subprocess.Popen
+
+    def start(self, key):
+        return self.runner(self.command(key))
+
     def supported_features(self):
         features = set()
         if shutil.which('shutdown'):
@@ -44,7 +54,7 @@ class Backend(Session):
             return ('xset', 'dpms', 'force', 'off')
         raise NotImplementedError('Display-off requires X11 with xset or Sway with swaymsg')
 
-    def read(self, key):
+    def check(self, key):
         if key != 'displays_off':
             raise ValueError(key)
         self.display_command()
@@ -58,8 +68,33 @@ class Backend(Session):
             raise RuntimeError('Sway rejected display-off command')
 
 
-class Power(PowerIntegration):
+class Power(EntityIntegration):
     backend_type = Backend
+    legacy_discovery = ('homeassistant/switch/{node}/config',)
     entities = {
-        'displays_off': ('button', 'Turn off displays', {'icon': 'mdi:monitor-off'}),
+        'shutdown': Entity(
+            'button',
+            'Shutdown',
+            {'icon': 'mdi:power'},
+            availability='connection',
+            behavior='process',
+            stop_after=True,
+        ),
+        'sleep': Entity(
+            'button',
+            'Sleep',
+            {'icon': 'mdi:sleep'},
+            availability='connection',
+            behavior='process',
+            stop_after=False,
+        ),
+        'restart': Entity(
+            'button',
+            'Restart',
+            {'icon': 'mdi:restart', 'device_class': 'restart'},
+            availability='connection',
+            behavior='process',
+            stop_after=True,
+        ),
+        'displays_off': Entity('button', 'Turn off displays', {'icon': 'mdi:monitor-off'}),
     }

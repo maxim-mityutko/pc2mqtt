@@ -1,16 +1,18 @@
 """Windows Core Audio playback and default-output volume/mute controls."""
-from contextlib import contextmanager
+
 import ctypes as C
+from contextlib import contextmanager
 from importlib.util import find_spec
 
-from .._shared import AudioIntegration
+from .._entities import Entity
+from .._shared import EntityIntegration
 
 
 @contextmanager
 def endpoint():
     import comtypes
-    from pycaw.pycaw import AudioUtilities
     from pycaw.api.endpointvolume import IAudioEndpointVolume
+    from pycaw.pycaw import AudioUtilities
 
     comtypes.CoInitialize()
     try:
@@ -31,10 +33,16 @@ class Backend:
         return 'requires the Windows comtypes and pycaw libraries'
 
     def read(self, key):
+        if key == 'audio_playing':
+            return self.is_audio_playing()
         if key not in ('volume', 'mute'):
             raise ValueError(key)
         with endpoint() as audio:
-            return round(audio.GetMasterVolumeLevelScalar() * 100) if key == 'volume' else bool(audio.GetMute())
+            return (
+                round(audio.GetMasterVolumeLevelScalar() * 100)
+                if key == 'volume'
+                else bool(audio.GetMute())
+            )
 
     def execute(self, key, value):
         if key not in ('volume', 'mute'):
@@ -61,9 +69,7 @@ class Backend:
             # Inspect every output, including playback routed away from the default.
             for index in range(devices.GetCount()):
                 device = devices.Item(index)
-                interface = device.Activate(
-                    IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None
-                )
+                interface = device.Activate(IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None)
                 manager = interface.QueryInterface(IAudioSessionManager2)
                 sessions = manager.GetSessionEnumerator()
                 for session_index in range(sessions.GetCount()):
@@ -75,12 +81,27 @@ class Backend:
             comtypes.CoUninitialize()
 
 
-class Audio(AudioIntegration):
+class Audio(EntityIntegration):
     backend_type = Backend
     entities = {
-        'volume': ('number', 'Volume', {
-            'min': 0, 'max': 100, 'step': 1, 'mode': 'slider',
-            'unit_of_measurement': '%', 'icon': 'mdi:volume-high',
-        }),
-        'mute': ('switch', 'Mute', {'icon': 'mdi:volume-off'}),
+        'audio_playing': Entity(
+            'binary_sensor',
+            'Audio playing',
+            {'icon': 'mdi:volume-high', 'expire_after': 90},
+            interval=0,
+            behavior='playback',
+        ),
+        'volume': Entity(
+            'number',
+            'Volume',
+            {
+                'min': 0,
+                'max': 100,
+                'step': 1,
+                'mode': 'slider',
+                'unit_of_measurement': '%',
+                'icon': 'mdi:volume-high',
+            },
+        ),
+        'mute': Entity('switch', 'Mute', {'icon': 'mdi:volume-off'}),
     }

@@ -19,7 +19,7 @@ setup:
 	$(POETRY) install --no-interaction --no-ansi
 
 test:
-	$(POETRY) run python -m unittest discover -s tests -v
+	$(POETRY) run python -m pytest -v
 
 build-exe:
 	$(POETRY) run python scripts/build.py exe

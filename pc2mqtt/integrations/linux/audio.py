@@ -1,10 +1,12 @@
 """PulseAudio/PipeWire playback and default-output controls; requires pactl."""
+
 import os
 import re
 import shutil
 import subprocess
 
-from .._shared import AudioIntegration
+from .._entities import Entity
+from .._shared import EntityIntegration
 from ._session import run
 
 
@@ -16,6 +18,8 @@ class Backend:
         return 'pactl is not installed or not on PATH'
 
     def read(self, key):
+        if key == 'audio_playing':
+            return self.is_audio_playing()
         if key == 'volume':
             values = re.findall(r'(\d+)%', run('pactl', 'get-sink-volume', '@DEFAULT_SINK@'))
             if not values:
@@ -38,25 +42,39 @@ class Backend:
 
     def is_audio_playing(self) -> bool:
         result = subprocess.run(
-            ["pactl", "list", "short", "sinks"],
+            ['pactl', 'list', 'short', 'sinks'],
             capture_output=True,
             text=True,
             check=True,
             timeout=5,
-            env={**os.environ, "LC_ALL": "C"},
+            env={**os.environ, 'LC_ALL': 'C'},
         )
         return any(
-            line.split()[-1] == "RUNNING"
-            for line in result.stdout.splitlines() if line.strip()
+            line.split()[-1] == 'RUNNING' for line in result.stdout.splitlines() if line.strip()
         )
 
 
-class Audio(AudioIntegration):
+class Audio(EntityIntegration):
     backend_type = Backend
     entities = {
-        'volume': ('number', 'Volume', {
-            'min': 0, 'max': 100, 'step': 1, 'mode': 'slider',
-            'unit_of_measurement': '%', 'icon': 'mdi:volume-high',
-        }),
-        'mute': ('switch', 'Mute', {'icon': 'mdi:volume-off'}),
+        'audio_playing': Entity(
+            'binary_sensor',
+            'Audio playing',
+            {'icon': 'mdi:volume-high', 'expire_after': 90},
+            interval=0,
+            behavior='playback',
+        ),
+        'volume': Entity(
+            'number',
+            'Volume',
+            {
+                'min': 0,
+                'max': 100,
+                'step': 1,
+                'mode': 'slider',
+                'unit_of_measurement': '%',
+                'icon': 'mdi:volume-high',
+            },
+        ),
+        'mute': Entity('switch', 'Mute', {'icon': 'mdi:volume-off'}),
     }

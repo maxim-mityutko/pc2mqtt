@@ -1,4 +1,5 @@
 """Linux integrations, registered explicitly."""
+
 from .audio import Audio
 from .power import Power
 from .status import Status

@@ -1,48 +1,46 @@
 import json
-import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
+
+import pytest
 
 from pc2mqtt import PC2MQTT
 from pc2mqtt.app import main
 
 
-class DisplayNameTests(unittest.TestCase):
+class TestDisplayName:
+    @pytest.fixture(autouse=True)
+    def setup(self, make_app):
+        self.make_app = make_app
+
     def discovery(self, display_name=None):
-        with patch('pc2mqtt.platform.node', return_value='ABCD'), patch('pc2mqtt.mqtt.Client'):
-            pc = PC2MQTT('broker', display_name=display_name)
-        for integration in pc.integrations:
-            integration.backend = Mock()
-            integration.backend.supported_features.return_value = {
-                'audio_playing', 'volume', 'mute', 'shutdown', 'restart', 'sleep',
-                'displays_off', 'uptime', 'session_locked', 'idle_time', 'lock_session',
-            }
-        pc.config()
+        h = self.make_app(display_name=display_name)
+        h.app.config()
         messages = {
             call.kwargs['topic']: json.loads(call.kwargs['payload'])
-            for call in pc.client.publish.call_args_list if call.kwargs['payload'] and call.kwargs['topic'].endswith('/config')
+            for call in h.client.publish.call_args_list
+            if call.kwargs['payload'] and call.kwargs['topic'].endswith('/config')
         }
-        return pc, messages
+        return h.app, messages
 
     def test_display_name_changes_without_changing_discovery_identity(self):
         original, original_messages = self.discovery()
         renamed, renamed_messages = self.discovery('foo')
-        self.assertEqual(original.device['name'], 'Computer ABCD')
-        self.assertEqual(renamed.device['name'], 'Computer foo')
-        self.assertEqual(original.device['identifiers'], renamed.device['identifiers'])
-        self.assertEqual(original.availability_topic, renamed.availability_topic)
-        self.assertEqual(original_messages.keys(), renamed_messages.keys())
-        self.assertEqual(len(renamed_messages), 13)
+        assert original.device['name'] == 'Computer DESKTOP'
+        assert renamed.device['name'] == 'Computer foo'
+        assert original.device['identifiers'] == renamed.device['identifiers']
+        assert original.availability_topic == renamed.availability_topic
+        assert original_messages.keys() == renamed_messages.keys()
+        assert len(renamed_messages) == 13
         for topic, message in renamed_messages.items():
-            with self.subTest(topic=topic):
-                self.assertEqual(message['device']['name'], 'Computer foo')
-                self.assertEqual(message['unique_id'], original_messages[topic]['unique_id'])
-                self.assertTrue(message['unique_id'].startswith('computer_abcd_'))
+            assert message['device']['name'] == 'Computer foo'
+            assert message['unique_id'] == original_messages[topic]['unique_id']
+            assert message['unique_id'].startswith('computer_desktop_')
 
     def test_case_and_spaces_preserved_and_empty_rejected(self):
         pc, _ = self.discovery('  Living Room  ')
-        self.assertEqual(pc.device['name'], 'Computer Living Room')
+        assert pc.device['name'] == 'Computer Living Room'
         for value in ('', '   '):
-            with self.subTest(value=value), self.assertRaises(ValueError):
+            with pytest.raises(ValueError):
                 PC2MQTT('broker', display_name=value)
 
     def test_console_option_forwarded(self):
@@ -51,15 +49,18 @@ class DisplayNameTests(unittest.TestCase):
         factory.assert_called_once_with('broker', 1883, 60, display_name='foo')
 
     def test_tray_option_forwarded(self):
-        with patch('pc2mqtt.app.sys.platform', 'win32'), \
-             patch('pc2mqtt.app.PC2MQTT') as factory, \
-             patch('pc2mqtt.tray.configure_logging'), patch('pc2mqtt.tray.WindowsTray'):
+        with (
+            patch('pc2mqtt.app.sys.platform', 'win32'),
+            patch('pc2mqtt.app.PC2MQTT') as factory,
+            patch('pc2mqtt.tray.configure_logging'),
+            patch('pc2mqtt.tray.WindowsTray'),
+        ):
             main(['--host', 'broker', '--display-name', 'foo', '--tray'])
         factory.assert_called_once_with('broker', 1883, 60, display_name='foo', connect_async=True)
 
     def test_empty_cli_name_rejected_before_connecting(self):
         with patch('pc2mqtt.app.PC2MQTT') as factory:
-            with self.assertRaises(SystemExit) as raised:
+            with pytest.raises(SystemExit) as raised:
                 main(['--host', 'broker', '--display-name', '  '])
-            self.assertEqual(raised.exception.code, 2)
+            assert raised.value.code == 2
             factory.assert_not_called()
