@@ -52,12 +52,18 @@ class AudioSensor:
         self.state_topic = f"{topic}/state"
         self.availability_topic = f"{topic}/availability"
         self.supported = False
+        self._unsupported_reason = None
         self._audio_error = None
         self._audio_active_since = None
         self._audio_last_state = None
         self._next_audio_update = 0
 
     def _remove_discovery(self):
+        reason = ("pactl is not installed or not on PATH" if self.device['model'].lower() == 'linux'
+                  else f"audio playback detection is not supported on {self.device['model']}")
+        if reason != self._unsupported_reason:
+            self.logger.info('Audio playing disabled: %s', reason)
+            self._unsupported_reason = reason
         self.supported = False
         self._audio_active_since = None
         self._audio_last_state = None
@@ -70,6 +76,7 @@ class AudioSensor:
         if not self.supported:
             self._remove_discovery()
             return
+        self._unsupported_reason = None
         message = {
             "name": "Audio playing",
             "state_topic": self.state_topic,

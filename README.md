@@ -53,7 +53,8 @@ immediately after a check, with a one-minute refresh. Volume/mute feedback uses
 the corresponding `/state` topic. Unsupported desktop features and audio playback without `pactl` on Linux are
 omitted from discovery; temporary backend
 failures mark supported entities unavailable. Old unsupported discovery entries
-are removed on reconnect or discovery refresh.
+are removed on reconnect or discovery refresh. Disabled features log an INFO
+message with the reason; unchanged reasons are not repeated.
 Windows supports all desktop features; uptime may span Fast Startup shutdowns.
 Linux lock state depends on the desktop updating loginctl's `LockedHint`; idle time
 supports GNOME or X11, and display-off supports X11 or Sway. Other Wayland desktops

@@ -51,6 +51,20 @@ class DesktopTests(unittest.TestCase):
         self.desktop.backend.read.assert_called_once_with('uptime')
         self.assertTrue(all('/uptime/' in topic for topic in self.messages()))
 
+    def test_unsupported_logs_once_per_reason_and_again_after_support_changes(self):
+        self.desktop.backend.supported_features.return_value = set(ENTITIES) - {'displays_off'}
+        self.desktop.backend.unsupported_reason.return_value = 'requires X11 or Sway'
+        self.desktop.config()
+        self.desktop.config()
+        self.poll(0)
+        self.desktop.logger.info.assert_called_once_with(
+            '%s disabled: %s', 'Turn off displays', 'requires X11 or Sway')
+        self.desktop.backend.supported_features.return_value = set(ENTITIES)
+        self.desktop.config()
+        self.desktop.backend.supported_features.return_value = set(ENTITIES) - {'displays_off'}
+        self.desktop.config()
+        self.assertEqual(self.desktop.logger.info.call_count, 2)
+
     def test_new_capabilities_appear_on_next_discovery(self):
         self.desktop.backend.supported_features.return_value = {'uptime'}
         self.desktop.config()
@@ -199,6 +213,13 @@ class LinuxDesktopTests(unittest.TestCase):
         capabilities = self.capabilities(properties, {'DISPLAY': ':0'},
                                          {'loginctl', 'pactl', 'xset', 'xprintidle'})
         self.assertEqual(capabilities, set(ENTITIES))
+
+    def test_unsupported_reasons_identify_missing_dependencies(self):
+        with patch('pc2mqtt.integrations.desktop.linux.shutil.which', return_value=None):
+            self.assertIn('pactl', self.backend.unsupported_reason('volume'))
+            self.assertIn('loginctl', self.backend.unsupported_reason('lock_session'))
+        self.assertIn('xprintidle', self.backend.unsupported_reason('idle_time'))
+        self.assertIn('Sway', self.backend.unsupported_reason('displays_off'))
 
     def test_no_desktop_tools_only_advertises_uptime(self):
         self.assertEqual(self.capabilities({}, {}, set()), {'uptime'})

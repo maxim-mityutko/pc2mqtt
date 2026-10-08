@@ -95,6 +95,9 @@ class AudioSupportTests(unittest.TestCase):
             detect.assert_not_called()
             self.client.publish.assert_not_called()
             self.sensor.logger.warning.assert_not_called()
+            self.sensor.config()
+            self.sensor.logger.info.assert_called_once_with(
+                'Audio playing disabled: %s', 'pactl is not installed or not on PATH')
 
     def test_pactl_removed_during_runtime_removes_entity(self):
         with patch('pc2mqtt.integrations.audio.shutil.which', return_value='/usr/bin/pactl'):

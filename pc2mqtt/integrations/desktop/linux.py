@@ -50,6 +50,21 @@ class LinuxDesktop:
             features.add('displays_off')
         return features
 
+    def unsupported_reason(self, key):
+        if key in ('volume', 'mute'):
+            return 'pactl is not installed or not on PATH'
+        if key in ('session_locked', 'lock_session'):
+            if not shutil.which('loginctl'):
+                return 'loginctl is not installed or not on PATH'
+            if not self._session_properties:
+                return 'no graphical session could be detected for the current user'
+            return 'the desktop does not report a valid LockedHint'
+        if key == 'idle_time':
+            return 'requires GNOME with gdbus, or an X11 display with xprintidle'
+        if key == 'displays_off':
+            return 'requires an X11 display with xset, or a Sway session with swaymsg'
+        return 'not supported by this desktop'
+
     def session(self):
         session = os.environ.get('XDG_SESSION_ID') or run('loginctl', 'show-user', str(os.getuid()), '-p', 'Display', '--value')
         if not session:

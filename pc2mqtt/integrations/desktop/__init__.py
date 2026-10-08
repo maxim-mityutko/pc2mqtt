@@ -38,12 +38,15 @@ class Desktop:
         self.next_poll = 0
         self.last = {}
         self.errors = {}
+        self._unsupported_reasons = {}
 
     def config(self):
+        platform_reason = None
         try:
             supported = set(self._backend().supported_features()) & ENTITIES.keys()
-        except NotImplementedError:
+        except NotImplementedError as exc:
             supported = set()
+            platform_reason = str(exc)
         except Exception as exc:
             # Failed detection is not evidence that existing entities are unsupported.
             self.logger.warning('Unable to determine desktop capabilities: %s', exc)
@@ -52,12 +55,17 @@ class Desktop:
         for key, (domain, name, options) in ENTITIES.items():
             topic = self.topics[key]
             if key not in supported:
+                reason = platform_reason or self.backend.unsupported_reason(key)
+                if self._unsupported_reasons.get(key) != reason:
+                    self.logger.info('%s disabled: %s', name, reason)
+                    self._unsupported_reasons[key] = reason
                 # Remove retained discovery from older versions or desktop setups.
                 for suffix in ('config', 'state', 'availability'):
                     publish(self.client, topic=f'{topic}/{suffix}', payload='')
                 if f'{topic}/set' in self.commands:
                     self.client.unsubscribe(f'{topic}/set')
                 continue
+            self._unsupported_reasons.pop(key, None)
             payload = {
                 'name': name, 'unique_id': f'{self.identifier}_{key}', 'device': self.device,
                 'availability_mode': 'all',
