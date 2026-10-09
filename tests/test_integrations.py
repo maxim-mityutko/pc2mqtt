@@ -15,9 +15,9 @@ from pc2mqtt.integrations._shared import EntityIntegration
 
 OWNERS = {
     'audio': {'audio_playing', 'volume', 'mute'},
-    'power': {'shutdown', 'sleep', 'restart', 'displays_off'},
-    'status': {'ip_address', 'last_seen', 'uptime'},
-    'user': {'session_locked', 'idle_time', 'lock_session'},
+    'power': {'shutdown', 'sleep', 'restart', 'turn_off_displays'},
+    'status': {'status', 'ip_address', 'last_seen', 'uptime'},
+    'user': {'session_locked', 'user_idle_time', 'lock_session'},
 }
 PLATFORMS = ('Linux', 'Windows')
 
@@ -50,10 +50,51 @@ class TestIntegration:
             seen.update(keys)
             for cfg in configs:
                 key = cfg['unique_id'].removeprefix('computer_pc_')
+                assert key == cfg['name'].lower().replace(' ', '_')
                 for name in ('command_topic', 'state_topic'):
                     if name in cfg:
-                        assert f'/pc/{key}/' in cfg[name]
-        assert len(seen) == 13
+                        if key == 'status':
+                            assert cfg[name] == 'connection'
+                        else:
+                            assert f'/pc/{key}/' in cfg[name]
+        assert len(seen) == 14
+
+    @pytest.mark.parametrize(
+        'domain,mqtt_domain,old,new',
+        [
+            ('status', 'binary_sensor', 'online', 'status'),
+            ('user', 'sensor', 'idle_time', 'user_idle_time'),
+            ('power', 'button', 'displays_off', 'turn_off_displays'),
+        ],
+    )
+    def test_renamed_discovery_replaces_old_identity(
+        self, system, domain, mqtt_domain, old, new, make_integration
+    ):
+        cls = next(cls for cls in integration_types(system) if cls.__name__.lower() == domain)
+        h = make_integration(cls)
+        old_topic = f'homeassistant/{mqtt_domain}/pc/{old}'
+        new_topic = f'homeassistant/{mqtt_domain}/pc/{new}'
+        for _ in range(2):
+            h.client.reset_mock()
+            h.integration.config()
+            calls = [call.kwargs for call in h.client.publish.call_args_list]
+            topics = [call['topic'] for call in calls]
+            removed = calls[topics.index(f'{old_topic}/config')]
+            assert removed['payload'] == ''
+            assert removed['retain']
+            assert topics.index(f'{old_topic}/config') < topics.index(f'{new_topic}/config')
+            config = json.loads(publications(h.client)[f'{new_topic}/config'])
+            assert config['unique_id'] == f'computer_pc_{new}'
+            assert f'{old_topic}/set' not in subscriptions(h.client)
+            if mqtt_domain == 'button':
+                assert config['command_topic'] == f'{new_topic}/set'
+                assert f'{new_topic}/set' in subscriptions(h.client)
+                assert not h.integration.on_message(
+                    SimpleNamespace(topic=f'{old_topic}/set', payload=b'PRESS', retain=False)
+                )
+            if new == 'user_idle_time':
+                assert config['state_topic'] == f'{new_topic}/state'
+                assert config['availability'][1]['topic'] == f'{new_topic}/availability'
 
     @pytest.mark.parametrize('domain', OWNERS)
     def test_one_capability_snapshot_per_refresh(self, system, domain, make_integration):
@@ -73,7 +114,7 @@ class TestIntegration:
                 if topic.endswith('/config') and value
             ]
             assert {cfg['name'] for cfg in configs} == (
-                {'IP address', 'Last seen'} if cls.__name__ == 'Status' else set()
+                {'Status', 'IP address', 'Last seen'} if cls.__name__ == 'Status' else set()
             )
             h.client.subscribe.assert_not_called()
             h.integration.poll()
@@ -86,7 +127,7 @@ class TestIntegration:
             (domain, key)
             for domain, keys in OWNERS.items()
             for key in sorted(keys)
-            if key not in {'ip_address', 'last_seen'}
+            if key not in {'status', 'ip_address', 'last_seen'}
         ],
     )
     def test_partial_capabilities_cleanup_and_recovery(

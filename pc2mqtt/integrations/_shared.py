@@ -105,7 +105,7 @@ class EntityIntegration:
         self.supported = {
             key
             for key, entity in self.entities.items()
-            if key in known or entity.reader is not None
+            if key in known or entity.reader is not None or entity.behavior == 'connection'
         }
         for topic in self.legacy_topics:
             publish(self.client, topic=topic, payload='')
@@ -213,7 +213,11 @@ class EntityIntegration:
         if self.processes is not None:
             self.processes.poll(self.supported, self.entities)
         for key, entity in self.entities.items():
-            if key not in self.supported or key == failed_command or entity.behavior == 'process':
+            if (
+                key not in self.supported
+                or key == failed_command
+                or entity.behavior in ('process', 'connection')
+            ):
                 continue
             if now < self.next_poll.get(key, 0):
                 continue

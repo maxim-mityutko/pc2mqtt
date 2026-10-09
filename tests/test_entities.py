@@ -26,7 +26,7 @@ class TestEntity:
     def setup(self, make_integration):
         self.values = {
             'session_locked': False,
-            'idle_time': 12,
+            'user_idle_time': 12,
             'uptime': 500,
             'volume': 40,
             'mute': False,
@@ -69,7 +69,7 @@ class TestEntity:
         assert all(('/uptime/' in topic for topic in self.messages()))
 
     def test_unsupported_logs_once_per_reason_and_again_after_support_changes(self):
-        self.integration.backend.supported_features.return_value = set(ENTITIES) - {'displays_off'}
+        self.integration.backend.supported_features.return_value = set(ENTITIES) - {'turn_off_displays'}
         self.integration.backend.unsupported_reason.return_value = 'requires X11 or Sway'
         self.integration.config()
         self.integration.config()
@@ -79,7 +79,7 @@ class TestEntity:
         )
         self.integration.backend.supported_features.return_value = set(ENTITIES)
         self.integration.config()
-        self.integration.backend.supported_features.return_value = set(ENTITIES) - {'displays_off'}
+        self.integration.backend.supported_features.return_value = set(ENTITIES) - {'turn_off_displays'}
         self.integration.config()
         assert self.integration.logger.info.call_count == 2
 
@@ -111,7 +111,7 @@ class TestEntity:
         assert len({cfg['unique_id'] for cfg in configs.values()}) == 7
         assert configs['volume']['max'] == 100
         assert configs['mute']['payload_on'] == 'ON'
-        for key in ('idle_time', 'uptime'):
+        for key in ('user_idle_time', 'uptime'):
             assert configs[key]['unit_of_measurement'] == 'h'
             assert configs[key]['value_template'] == '{{ value | float / 3600 }}'
             assert configs[key]['suggested_display_precision'] == 2
@@ -151,14 +151,14 @@ class TestEntity:
             ('mute', b'toggle'),
             ('mute', b'\xff'),
             ('lock_session', b'OFF'),
-            ('displays_off', b'OFF'),
+            ('turn_off_displays', b'OFF'),
         ]:
             assert self.integration.on_message(self.message(key, payload))
         for key, payload in [
             ('volume', b'50'),
             ('mute', b'ON'),
             ('lock_session', b'PRESS'),
-            ('displays_off', b'PRESS'),
+            ('turn_off_displays', b'PRESS'),
         ]:
             self.integration.on_message(self.message(key, payload, retain=True))
         assert not self.integration.on_message(SimpleNamespace(topic='unknown'))
@@ -171,7 +171,7 @@ class TestEntity:
             ('mute', b'ON', True),
             ('mute', b'OFF', False),
             ('lock_session', b'PRESS', 'PRESS'),
-            ('displays_off', b'PRESS', 'PRESS'),
+            ('turn_off_displays', b'PRESS', 'PRESS'),
         ]:
             self.integration.backend.execute.reset_mock()
             self.integration.on_message(self.message(key, payload))
@@ -198,19 +198,19 @@ class TestEntity:
     def test_backend_failure_is_isolated_and_recovers(self):
 
         def read(key):
-            if key == 'idle_time':
+            if key == 'user_idle_time':
                 raise NotImplementedError('no idle monitor')
             return self.values[key]
 
         self.integration.backend.read.side_effect = read
         self.poll(0)
-        assert self.messages()[f'{self.integration.topics["idle_time"]}/availability'] == 'offline'
+        assert self.messages()[f'{self.integration.topics["user_idle_time"]}/availability'] == 'offline'
         assert self.messages()[f'{self.integration.topics["uptime"]}/state'] == '500'
         self.poll(10)
         self.integration.logger.warning.assert_called_once()
         self.integration.backend.read.side_effect = lambda key: self.values[key]
         self.poll(20)
-        assert self.messages()[f'{self.integration.topics["idle_time"]}/availability'] == 'online'
+        assert self.messages()[f'{self.integration.topics["user_idle_time"]}/availability'] == 'online'
 
     def test_action_failure_not_reported_as_success(self):
         self.integration.backend.execute.side_effect = OSError('denied')

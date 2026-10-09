@@ -23,7 +23,7 @@ class TestUser:
             return 1
 
         self.dlls['user32'].GetLastInputInfo.side_effect = last_input
-        assert self.backend.read('idle_time') == 15
+        assert self.backend.read('user_idle_time') == 15
         assert self.dlls['kernel32'].GetTickCount64.restype is C.c_uint64
 
     def test_wts_lock_state_and_buffer_cleanup(self):
@@ -55,11 +55,11 @@ class TestUser:
             create=True,
             side_effect=lambda name, **kwargs: self.dlls[name] if name != 'wtsapi32' else None,
         ):
-            assert self.backend.supported_features() == {'idle_time', 'lock_session'}
+            assert self.backend.supported_features() == {'user_idle_time', 'lock_session'}
             assert 'WTSQuerySessionInformationW' in self.backend.unsupported_reason(
                 'session_locked'
             )
-        assert self.backend.supported_features() == {'session_locked', 'idle_time', 'lock_session'}
+        assert self.backend.supported_features() == {'session_locked', 'user_idle_time', 'lock_session'}
 
 
 class TestAudio:
@@ -90,12 +90,12 @@ class TestPower:
     def test_display_action_uses_async_native_api(self):
         with patch('ctypes.WinDLL', create=True) as dll:
             backend = power.Backend()
-            backend.execute('displays_off', 'PRESS')
+            backend.execute('turn_off_displays', 'PRESS')
             native = dll.return_value.SendNotifyMessageW
             native.assert_called_once_with(0xFFFF, 0x112, 0xF170, 2)
             native.return_value = 0
             with pytest.raises(RuntimeError):
-                backend.execute('displays_off', 'PRESS')
+                backend.execute('turn_off_displays', 'PRESS')
 
     def test_capabilities_are_independent(self):
         with (
@@ -104,7 +104,7 @@ class TestPower:
         ):
             assert power.Backend().supported_features() == {'shutdown', 'restart'}
         with patch('ctypes.WinDLL', create=True), patch('shutil.which', return_value=None):
-            assert power.Backend().supported_features() == {'displays_off'}
+            assert power.Backend().supported_features() == {'turn_off_displays'}
 
 
 class TestStatus:

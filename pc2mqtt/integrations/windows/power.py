@@ -17,7 +17,7 @@ class Backend(NativeAPI):
     def start(self, key):
         return self.runner(self.command(key))
 
-    features = ('displays_off',)
+    features = ('turn_off_displays',)
 
     def prepare(self, key):
         self.display_off = self.bind(
@@ -59,7 +59,7 @@ class Backend(NativeAPI):
         }[action]
 
     def check(self, key):
-        if key != 'displays_off':
+        if key != 'turn_off_displays':
             raise ValueError(key)
         self.prepare(key)
 
@@ -72,7 +72,10 @@ class Backend(NativeAPI):
 
 class Power(EntityIntegration):
     backend_type = Backend
-    legacy_discovery = ('homeassistant/switch/{node}/config',)
+    legacy_discovery = (
+        'homeassistant/switch/{node}/config',
+        'homeassistant/button/{node}/displays_off/config',
+    )
     entities = {
         'shutdown': Entity(
             'button',
@@ -98,5 +101,5 @@ class Power(EntityIntegration):
             behavior='process',
             stop_after=True,
         ),
-        'displays_off': Entity('button', 'Turn off displays', {'icon': 'mdi:monitor-off'}),
+        'turn_off_displays': Entity('button', 'Turn off displays', {'icon': 'mdi:monitor-off'}),
     }

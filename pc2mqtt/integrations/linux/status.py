@@ -22,7 +22,15 @@ class Backend:
 
 class Status(EntityIntegration):
     backend_type = Backend
+    legacy_discovery = ('homeassistant/binary_sensor/{node}/online/config',)
     entities = {
+        'status': Entity(
+            'binary_sensor',
+            'Status',
+            {'device_class': 'connectivity'},
+            availability='none',
+            behavior='connection',
+        ),
         'last_seen': Entity(
             'sensor',
             'Last seen',
