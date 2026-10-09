@@ -1,4 +1,4 @@
-"""PulseAudio/PipeWire playback and default-output controls; requires pactl."""
+"""PulseAudio/PipeWire audio controls and playerctl media playback commands."""
 
 import os
 import re
@@ -12,9 +12,14 @@ from ._session import run
 
 class Backend:
     def supported_features(self):
-        return {'audio_playing', 'volume', 'mute'} if shutil.which('pactl') else set()
+        features = {'audio_playing', 'volume', 'mute'} if shutil.which('pactl') else set()
+        if shutil.which('playerctl'):
+            features.add('play_pause')
+        return features
 
     def unsupported_reason(self, key):
+        if key == 'play_pause':
+            return 'playerctl is not installed or not on PATH'
         return 'pactl is not installed or not on PATH'
 
     def read(self, key):
@@ -32,11 +37,18 @@ class Backend:
             return output == 'Mute: yes'
         raise ValueError(key)
 
+    def check(self, key):
+        if key != 'play_pause':
+            raise ValueError(key)
+        run('playerctl', 'status')
+
     def execute(self, key, value):
         if key == 'volume':
             run('pactl', 'set-sink-volume', '@DEFAULT_SINK@', f'{value:g}%')
         elif key == 'mute':
             run('pactl', 'set-sink-mute', '@DEFAULT_SINK@', '1' if value else '0')
+        elif key == 'play_pause':
+            run('playerctl', 'play-pause')
         else:
             raise ValueError(key)
 
@@ -57,6 +69,7 @@ class Backend:
 class Audio(EntityIntegration):
     backend_type = Backend
     entities = {
+        'play_pause': Entity('button', 'Play / Pause', {'icon': 'mdi:play-pause'}),
         'audio_playing': Entity(
             'binary_sensor',
             'Audio playing',

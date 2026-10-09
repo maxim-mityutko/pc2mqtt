@@ -1,6 +1,7 @@
 """Platform registration, domain ownership, and MQTT lifecycle contracts."""
 
 import json
+import re
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -14,7 +15,7 @@ from pc2mqtt.integrations._entities import Entity
 from pc2mqtt.integrations._shared import EntityIntegration
 
 OWNERS = {
-    'audio': {'audio_playing', 'volume', 'mute'},
+    'audio': {'play_pause', 'audio_playing', 'volume', 'mute'},
     'power': {'shutdown', 'sleep', 'restart', 'turn_off_displays'},
     'status': {'status', 'ip_address', 'last_seen', 'uptime'},
     'user': {'session_locked', 'user_idle_time', 'lock_session'},
@@ -50,14 +51,14 @@ class TestIntegration:
             seen.update(keys)
             for cfg in configs:
                 key = cfg['unique_id'].removeprefix('computer_pc_')
-                assert key == cfg['name'].lower().replace(' ', '_')
+                assert key == re.sub(r'[^a-z0-9]+', '_', cfg['name'].lower()).strip('_')
                 for name in ('command_topic', 'state_topic'):
                     if name in cfg:
                         if key == 'status':
                             assert cfg[name] == 'connection'
                         else:
                             assert f'/pc/{key}/' in cfg[name]
-        assert len(seen) == 14
+        assert len(seen) == 15
 
     @pytest.mark.parametrize(
         'domain,mqtt_domain,old,new',
@@ -170,6 +171,7 @@ class TestIntegration:
             ('power', 'shutdown', b'PRESS'),
             ('user', 'lock_session', b'PRESS'),
             ('audio', 'mute', b'ON'),
+            ('audio', 'play_pause', b'PRESS'),
         ],
     )
     def test_reconnect_discards_commands_even_if_detection_fails(
@@ -226,7 +228,7 @@ class TestApplication:
                 {'topic': 'homeassistant/binary_sensor/desktop/audio_playing/availability'},
             ]
             assert messages['pc2mqtt/desktop/availability'] == 'online'
-            assert h.client.subscribe.call_count == 7
+            assert h.client.subscribe.call_count == 8
 
     def test_failed_connection_does_not_announce(self, make_app):
         h = make_app()

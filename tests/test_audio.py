@@ -175,12 +175,12 @@ class TestPlayback:
 
 
 class TestAudioCapabilities:
-    def test_missing_pactl_removes_all_audio_discovery(self, make_integration, monkeypatch):
+    def test_missing_tools_removes_all_audio_discovery(self, make_integration, monkeypatch):
         monkeypatch.setattr('pc2mqtt.integrations.linux.audio.shutil.which', lambda name: None)
         h = make_integration(Audio, backend=LinuxAudio())
         h.integration.config()
         messages = [call.kwargs for call in h.client.publish.call_args_list]
-        assert len(messages) == 9
+        assert len(messages) == 12
         assert all(message['payload'] == '' and message['retain'] for message in messages)
         h.client.reset_mock()
         h.integration.poll()
@@ -191,7 +191,8 @@ class TestAudioCapabilities:
         h = make_integration(Audio, backend=LinuxAudio())
         h.integration.config()
         monkeypatch.setattr(
-            'pc2mqtt.integrations.linux.audio.shutil.which', lambda name: '/bin/pactl'
+            'pc2mqtt.integrations.linux.audio.shutil.which',
+            lambda name: '/bin/pactl' if name == 'pactl' else None
         )
         h.client.reset_mock()
         h.integration.config()
@@ -202,3 +203,73 @@ class TestAudioCapabilities:
         ]
         assert {config['name'] for config in configs} == {'Audio playing', 'Volume', 'Mute'}
         assert h.client.subscribe.call_count == 2
+
+
+class TestPlayPause:
+    @pytest.mark.parametrize('system', ['Linux', 'Windows'])
+    def test_discovery_and_queued_button_press(self, make_integration, system):
+        cls = next(cls for cls in integration_types(system) if cls.__name__ == 'Audio')
+        h = make_integration(cls, capabilities={'play_pause'})
+        h.integration.config()
+        topic = 'homeassistant/button/pc/play_pause'
+        config = next(
+            json.loads(call.kwargs['payload'])
+            for call in h.client.publish.call_args_list
+            if call.kwargs['topic'] == f'{topic}/config'
+        )
+        assert config['name'] == 'Play / Pause'
+        assert config['unique_id'] == 'computer_pc_play_pause'
+        assert config['command_topic'] == f'{topic}/set'
+        assert config['payload_press'] == 'PRESS'
+        assert 'state_topic' not in config
+        for payload, retain in [(b'PRESS', True), (b'ON', False), (b'\xff', False)]:
+            h.integration.on_message(SimpleNamespace(
+                topic=f'{topic}/set', payload=payload, retain=retain,
+            ))
+        h.integration.poll()
+        h.backend.execute.assert_not_called()
+        h.integration.on_message(SimpleNamespace(
+            topic=f'{topic}/set', payload=b'PRESS', retain=False,
+        ))
+        h.backend.execute.assert_not_called()
+        h.integration.poll()
+        h.integration.poll()
+        h.backend.execute.assert_called_once_with('play_pause', 'PRESS')
+
+    @pytest.mark.parametrize('tools,expected', [
+        (set(), set()),
+        ({'playerctl'}, {'play_pause'}),
+        ({'pactl'}, {'audio_playing', 'volume', 'mute'}),
+        ({'playerctl', 'pactl'}, {'play_pause', 'audio_playing', 'volume', 'mute'}),
+    ])
+    def test_linux_capabilities_are_independent(self, tools, expected):
+        with patch('shutil.which', side_effect=lambda name: name if name in tools else None):
+            assert LinuxAudio().supported_features() == expected
+
+    def test_linux_commands_and_missing_player_recovery(self, make_integration):
+        with (
+            patch('shutil.which', side_effect=lambda name: name if name == 'playerctl' else None),
+            patch('pc2mqtt.integrations.linux.audio.run') as command,
+        ):
+            h = make_integration(Audio, backend=LinuxAudio())
+            h.integration.config()
+            h.client.reset_mock()
+            command.side_effect = subprocess.CalledProcessError(1, 'playerctl')
+            h.integration.poll()
+            command.assert_called_once_with('playerctl', 'status')
+            assert h.client.publish.call_args.kwargs['payload'] == 'offline'
+            assert 'play_pause' in h.integration.supported
+            assert not any(c.kwargs['topic'].endswith('/config') for c in h.client.publish.call_args_list)
+            command.side_effect = None
+            command.return_value = 'Paused'
+            h.clock.return_value = 10
+            h.integration.poll()
+            assert h.client.publish.call_args.kwargs['payload'] == 'online'
+            h.backend.execute('play_pause', 'PRESS')
+            command.assert_called_with('playerctl', 'play-pause')
+            command.side_effect = subprocess.CalledProcessError(1, 'playerctl')
+            h.integration.on_message(SimpleNamespace(
+                topic='homeassistant/button/pc/play_pause/set', payload=b'PRESS', retain=False,
+            ))
+            h.integration.poll()
+            assert h.client.publish.call_args.kwargs['payload'] == 'offline'

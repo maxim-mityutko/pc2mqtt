@@ -113,7 +113,7 @@ def build(kind, tag=None):
         "Section: utils\n"
         "Priority: optional\n"
         f"Depends: libc6 (>= {libc_version}), zlib1g\n"
-        "Recommends: pulseaudio-utils, systemd-sysv, x11-xserver-utils, xprintidle, libglib2.0-bin\n"
+        "Recommends: pulseaudio-utils, playerctl, systemd-sysv, x11-xserver-utils, xprintidle, libglib2.0-bin\n"
         "Description: Expose computer controls and audio playback through MQTT\n"
     )
     (package_root / "DEBIAN/control").write_text(control)
