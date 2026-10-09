@@ -6,6 +6,7 @@ import pytest
 
 from pc2mqtt import PC2MQTT
 from pc2mqtt.integrations.linux.status import Status
+from pc2mqtt.integrations.windows.status import Status as WindowsStatus
 from pc2mqtt.publishing import expiry_properties
 
 
@@ -127,3 +128,60 @@ class TestRetention:
         app.poll()
         assert integration.config.call_count == configs
         assert mqtt_client.publish.call_count == messages
+
+
+class TestConnectionStatus:
+    @pytest.mark.parametrize('status_type', [Status, WindowsStatus])
+    @pytest.mark.parametrize('detection_fails', [False, True])
+    def test_discovery_without_native_support(self, make_integration, status_type, detection_fails):
+        h = make_integration(status_type, capabilities=set())
+        if detection_fails:
+            h.backend.supported_features.side_effect = OSError('native API unavailable')
+        h.integration.config()
+        topic = 'homeassistant/binary_sensor/pc/status/config'
+        config = next(
+            json.loads(call.kwargs['payload'])
+            for call in h.client.publish.call_args_list
+            if call.kwargs['topic'] == topic
+        )
+        assert config['name'] == 'Status'
+        assert config['unique_id'] == 'computer_pc_status'
+        assert config['device'] == h.integration.device
+        assert config['device_class'] == 'connectivity'
+        assert config['state_topic'] == 'connection'
+        assert config['payload_on'] == 'online'
+        assert config['payload_off'] == 'offline'
+        # Gating availability would hide the off state when the computer disconnects.
+        assert 'availability' not in config
+        assert 'availability_topic' not in config
+        assert 'command_topic' not in config
+        h.client.reset_mock()
+        h.integration.poll()
+        h.backend.read.assert_not_called()
+        assert all('/status/' not in call.kwargs['topic'] for call in h.client.publish.call_args_list)
+
+    @pytest.mark.parametrize('system', ['Linux', 'Windows'])
+    def test_connection_shutdown_and_will_match_discovered_state(self, make_app, system):
+        h = make_app(system=system)
+        for _ in range(2):
+            h.client.publish.reset_mock()
+            h.app.on_connect(h.client, None, None, 0)
+            messages = {call.kwargs['topic']: call.kwargs for call in h.client.publish.call_args_list}
+            config_message = messages['homeassistant/binary_sensor/desktop/status/config']
+            config = json.loads(config_message['payload'])
+            state = messages[config['state_topic']]
+            assert config_message['retain']
+            assert state['retain']
+            assert state['payload'] == config['payload_on']
+            will = h.client.will_set.call_args
+            assert will.args[0] == config['state_topic']
+            assert will.kwargs['payload'] == config['payload_off']
+            assert will.kwargs['retain']
+        h.client.publish.reset_mock()
+        h.app.close()
+        state = h.client.publish.call_args.kwargs
+        assert state['topic'] == config['state_topic']
+        assert state['payload'] == config['payload_off']
+        assert state['retain']
+        h.client.publish.return_value.wait_for_publish.assert_called_once_with(timeout=2)
+        h.client.disconnect.assert_called_once()

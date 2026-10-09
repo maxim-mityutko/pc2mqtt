@@ -29,16 +29,17 @@ pc2mqtt --host broker.local --display-name "Living Room"
 | Shutdown | Action | Power off; send `PRESS` | `homeassistant/button/<node>/shutdown/set` |
 | Restart | Action | Reboot; send `PRESS` | `homeassistant/button/<node>/restart/set` |
 | Sleep | Action | Suspend; send `PRESS` | `homeassistant/button/<node>/sleep/set` |
+| Status | Binary sensor | pc2mqtt connected: `online` / `offline` | `pc2mqtt/<node>/availability` |
 | Audio playing | Sensor | Active playback: `ON` / `OFF` | `homeassistant/binary_sensor/<node>/audio_playing/state` |
 | IP address | Sensor | Local IPv4/IPv6 used to reach the broker | `homeassistant/sensor/<node>/ip_address/state` |
 | Last seen | Sensor | UTC heartbeat, updated every minute | `homeassistant/sensor/<node>/last_seen/state` |
 | Session locked | Sensor | Session lock state: `ON` / `OFF` | `homeassistant/binary_sensor/<node>/session_locked/state` |
-| User idle time | Sensor | Idle duration; seconds on MQTT, hours in HA | `homeassistant/sensor/<node>/idle_time/state` |
+| User idle time | Sensor | Idle duration; seconds on MQTT, hours in HA | `homeassistant/sensor/<node>/user_idle_time/state` |
 | Uptime | Sensor | OS uptime; seconds on MQTT, hours in HA | `homeassistant/sensor/<node>/uptime/state` |
 | Volume | Control | Default output volume; send `0`–`100` | `homeassistant/number/<node>/volume/set` |
 | Mute | Control | Mute default output; send `ON` / `OFF` | `homeassistant/switch/<node>/mute/set` |
 | Lock session | Action | Lock desktop; send `PRESS` | `homeassistant/button/<node>/lock_session/set` |
-| Turn off displays | Action | Switch off screens; send `PRESS` | `homeassistant/button/<node>/displays_off/set` |
+| Turn off displays | Action | Switch off screens; send `PRESS` | `homeassistant/button/<node>/turn_off_displays/set` |
 
 | Behavior | Details |
 | --- | --- |
@@ -143,7 +144,7 @@ Matching [Linux](pc2mqtt/integrations/linux/) and [Windows](pc2mqtt/integrations
 | --- | --- |
 | `power` | Shutdown, restart, sleep, turn off displays |
 | `audio` | Audio playing, volume, mute |
-| `status` | IP address, last seen, uptime |
+| `status` | Status, IP address, last seen, uptime |
 | `user` | Session locked, user idle time, lock session |
 
 | Component | Responsibility |

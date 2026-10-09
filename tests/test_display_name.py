@@ -30,7 +30,7 @@ class TestDisplayName:
         assert original.device['identifiers'] == renamed.device['identifiers']
         assert original.availability_topic == renamed.availability_topic
         assert original_messages.keys() == renamed_messages.keys()
-        assert len(renamed_messages) == 13
+        assert len(renamed_messages) == 14
         for topic, message in renamed_messages.items():
             assert message['device']['name'] == 'Computer foo'
             assert message['unique_id'] == original_messages[topic]['unique_id']

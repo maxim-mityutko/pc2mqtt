@@ -30,7 +30,7 @@ class Backend(Session):
         x11_display = session_type == 'x11' and os.environ.get('DISPLAY') and shutil.which('xset')
         sway_display = os.environ.get('SWAYSOCK') and shutil.which('swaymsg')
         if x11_display or sway_display:
-            features.add('displays_off')
+            features.add('turn_off_displays')
         return features
 
     def unsupported_reason(self, key):
@@ -55,12 +55,12 @@ class Backend(Session):
         raise NotImplementedError('Display-off requires X11 with xset or Sway with swaymsg')
 
     def check(self, key):
-        if key != 'displays_off':
+        if key != 'turn_off_displays':
             raise ValueError(key)
         self.display_command()
 
     def execute(self, key, value):
-        if key != 'displays_off':
+        if key != 'turn_off_displays':
             raise ValueError(key)
         command = self.display_command()
         output = run(*command)
@@ -70,7 +70,10 @@ class Backend(Session):
 
 class Power(EntityIntegration):
     backend_type = Backend
-    legacy_discovery = ('homeassistant/switch/{node}/config',)
+    legacy_discovery = (
+        'homeassistant/switch/{node}/config',
+        'homeassistant/button/{node}/displays_off/config',
+    )
     entities = {
         'shutdown': Entity(
             'button',
@@ -96,5 +99,5 @@ class Power(EntityIntegration):
             behavior='process',
             stop_after=True,
         ),
-        'displays_off': Entity('button', 'Turn off displays', {'icon': 'mdi:monitor-off'}),
+        'turn_off_displays': Entity('button', 'Turn off displays', {'icon': 'mdi:monitor-off'}),
     }

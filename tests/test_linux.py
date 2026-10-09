@@ -36,7 +36,7 @@ class TestUser:
             ({'Type': 'x11'}, {'DISPLAY': ':0'}, {'loginctl', 'xprintidle'}),
             ({}, {'XDG_SESSION_TYPE': 'x11', 'DISPLAY': ':0'}, {'xprintidle'}),
         ]:
-            assert 'idle_time' in self.capabilities(properties, env, tools)
+            assert 'user_idle_time' in self.capabilities(properties, env, tools)
         assert self.capabilities({}, {}, set()) == set()
 
     def test_transient_session_failure_preserves_known_capabilities(self):
@@ -80,18 +80,18 @@ class TestUser:
 
     def test_idle_gnome_and_x11_fallback(self):
         with patch.object(user, 'run', return_value='(uint64 12500,)'):
-            assert self.backend.read('idle_time') == 12
+            assert self.backend.read('user_idle_time') == 12
         with (
             patch.object(self.backend, 'x11', return_value=True),
             patch.object(user, 'run', side_effect=[FileNotFoundError(), '23400']),
         ):
-            assert self.backend.read('idle_time') == 23
+            assert self.backend.read('user_idle_time') == 23
         with (
             patch.object(self.backend, 'x11', return_value=False),
             patch.object(user, 'run', side_effect=FileNotFoundError()),
         ):
             with pytest.raises(NotImplementedError):
-                self.backend.read('idle_time')
+                self.backend.read('user_idle_time')
 
     def test_lock_command(self):
         with (
@@ -145,7 +145,7 @@ class TestPower:
                     side_effect=lambda name: name if name in {'xset', 'swaymsg'} else None,
                 ),
             ):
-                assert ('displays_off' in self.backend.supported_features()) == expected
+                assert ('turn_off_displays' in self.backend.supported_features()) == expected
 
     def test_displays_x11_sway_and_unsupported_wayland(self):
         with (
@@ -154,7 +154,7 @@ class TestPower:
             patch('shutil.which', return_value='/usr/bin/xset'),
             patch.object(power, 'run') as command,
         ):
-            self.backend.execute('displays_off', 'PRESS')
+            self.backend.execute('turn_off_displays', 'PRESS')
             command.assert_called_with('xset', 'dpms', 'force', 'off')
         with (
             patch.dict('os.environ', {'SWAYSOCK': '/run/sway.sock'}, clear=True),
@@ -162,13 +162,13 @@ class TestPower:
             patch.object(power, 'run', return_value='[{"success":false}]'),
         ):
             with pytest.raises(RuntimeError):
-                self.backend.execute('displays_off', 'PRESS')
+                self.backend.execute('turn_off_displays', 'PRESS')
         with (
             patch.dict('os.environ', {}, clear=True),
             patch.object(self.backend, 'x11', return_value=False),
         ):
             with pytest.raises(NotImplementedError):
-                self.backend.check('displays_off')
+                self.backend.check('turn_off_displays')
 
 
 class TestAudio:

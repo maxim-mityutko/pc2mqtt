@@ -33,12 +33,12 @@ class ExtendedSessionInfo(C.Structure):
 
 
 class Backend(NativeAPI):
-    features = ('session_locked', 'idle_time', 'lock_session')
+    features = ('session_locked', 'user_idle_time', 'lock_session')
 
     def prepare(self, key):
         if key == 'lock_session':
             self.lock = self.bind('user32', 'LockWorkStation', C.c_int)
-        elif key == 'idle_time':
+        elif key == 'user_idle_time':
             self.ticks = self.bind('kernel32', 'GetTickCount64', C.c_uint64)
             self.last_input = self.bind(
                 'user32', 'GetLastInputInfo', C.c_int, (C.POINTER(LastInput),)
@@ -73,7 +73,7 @@ class Backend(NativeAPI):
         self.prepare(key)
         if key == 'session_locked':
             return self.locked()
-        if key == 'idle_time':
+        if key == 'user_idle_time':
             info = LastInput(C.sizeof(LastInput), 0)
             if not self.last_input(C.byref(info)):
                 raise C.WinError(C.get_last_error())
@@ -95,9 +95,10 @@ class Backend(NativeAPI):
 
 class User(EntityIntegration):
     backend_type = Backend
+    legacy_discovery = ('homeassistant/sensor/{node}/idle_time/config',)
     entities = {
         'session_locked': Entity('binary_sensor', 'Session locked', {'icon': 'mdi:lock'}),
-        'idle_time': Entity(
+        'user_idle_time': Entity(
             'sensor',
             'User idle time',
             {

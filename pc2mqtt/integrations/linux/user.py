@@ -24,11 +24,11 @@ class Backend(Session):
         if (is_x11 and shutil.which('xprintidle')) or (
             'gnome' in desktop.lower() and shutil.which('gdbus')
         ):
-            features.add('idle_time')
+            features.add('user_idle_time')
         return features
 
     def unsupported_reason(self, key):
-        if key == 'idle_time':
+        if key == 'user_idle_time':
             return 'requires GNOME with gdbus, or an X11 display with xprintidle'
         if not shutil.which('loginctl'):
             return 'loginctl is not installed or not on PATH'
@@ -43,7 +43,7 @@ class Backend(Session):
             if hint not in ('yes', 'no'):
                 raise RuntimeError('Desktop does not report LockedHint')
             return hint == 'yes'
-        if key == 'idle_time':
+        if key == 'user_idle_time':
             try:
                 output = run(
                     'gdbus',
@@ -79,9 +79,10 @@ class Backend(Session):
 
 class User(EntityIntegration):
     backend_type = Backend
+    legacy_discovery = ('homeassistant/sensor/{node}/idle_time/config',)
     entities = {
         'session_locked': Entity('binary_sensor', 'Session locked', {'icon': 'mdi:lock'}),
-        'idle_time': Entity(
+        'user_idle_time': Entity(
             'sensor',
             'User idle time',
             {

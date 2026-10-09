@@ -12,7 +12,7 @@ class Entity:
     options: dict = field(default_factory=dict)
     interval: float = 10
     availability: Literal['entity', 'connection', 'none'] = 'entity'
-    behavior: Literal['sample', 'playback', 'process'] = 'sample'
+    behavior: Literal['sample', 'playback', 'process', 'connection'] = 'sample'
     reader: Callable | None = None
     stop_after: bool = False
 
@@ -58,4 +58,7 @@ class Entity:
             message.update(payload_on='ON', payload_off='OFF')
         if self.domain == 'button':
             message['payload_press'] = 'PRESS'
+        if self.behavior == 'connection':
+            # The app's birth/shutdown messages and broker will supply the state.
+            message.update(state_topic=connection_topic, payload_on='online', payload_off='offline')
         return message
