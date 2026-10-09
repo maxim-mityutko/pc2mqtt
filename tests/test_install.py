@@ -78,6 +78,7 @@ class TestLinuxInstaller:
         assert commands[-1] == ['systemctl', '--user', 'restart', 'pc2mqtt.service']
         install = next((c for c in commands if c[:3] == ['sudo', 'apt-get', 'install']))
         assert 'pulseaudio-utils' in install
+        assert 'playerctl' in install
         assert not Path(next((arg for arg in install if arg.endswith('.deb')))).exists(), (
             'Temporary package should be cleaned up'
         )

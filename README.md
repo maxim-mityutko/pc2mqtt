@@ -30,6 +30,7 @@ pc2mqtt --host broker.local --display-name "Living Room"
 | Restart | Action | Reboot; send `PRESS` | `homeassistant/button/<node>/restart/set` |
 | Sleep | Action | Suspend; send `PRESS` | `homeassistant/button/<node>/sleep/set` |
 | Status | Binary sensor | pc2mqtt connected: `online` / `offline` | `pc2mqtt/<node>/availability` |
+| Play / Pause | Action | Toggle media playback; send `PRESS` | `homeassistant/button/<node>/play_pause/set` |
 | Audio playing | Sensor | Active playback: `ON` / `OFF` | `homeassistant/binary_sensor/<node>/audio_playing/state` |
 | IP address | Sensor | Local IPv4/IPv6 used to reach the broker | `homeassistant/sensor/<node>/ip_address/state` |
 | Last seen | Sensor | UTC heartbeat, updated every minute | `homeassistant/sensor/<node>/last_seen/state` |
@@ -57,6 +58,7 @@ pc2mqtt --host broker.local --display-name "Living Room"
 | Feature | Linux | Windows |
 | --- | --- | --- |
 | Audio | `pactl` + PulseAudio or PipeWire's PulseAudio compatibility; no direct ALSA | Core Audio; playback checked across all active outputs |
+| Play / Pause | `playerctl` + an MPRIS-compatible player on the user session bus | Media play/pause key in the logged-in desktop session |
 | Power | `shutdown`; sleep needs `systemctl` and running systemd | `shutdown`; Windows PowerShell for sleep |
 | Session lock | `loginctl`; lock state requires desktop `LockedHint` reporting | Logged-in user session |
 | Idle time | GNOME + `gdbus`, or X11 + `xprintidle` | Last-input API |
@@ -143,7 +145,7 @@ Matching [Linux](pc2mqtt/integrations/linux/) and [Windows](pc2mqtt/integrations
 | Module | Entities |
 | --- | --- |
 | `power` | Shutdown, restart, sleep, turn off displays |
-| `audio` | Audio playing, volume, mute |
+| `audio` | Play / Pause, audio playing, volume, mute |
 | `status` | Status, IP address, last seen, uptime |
 | `user` | Session locked, user idle time, lock session |
 

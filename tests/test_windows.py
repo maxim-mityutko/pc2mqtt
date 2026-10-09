@@ -76,13 +76,17 @@ class TestAudio:
             backend.execute('mute', False)
             native.SetMute.assert_called_once_with(0, None)
 
-    def test_missing_audio_libraries_hide_all_audio_entities(self):
+    def test_missing_audio_libraries_preserve_media_key(self):
         for missing in ('comtypes', 'pycaw'):
-            with patch.object(
-                audio, 'find_spec', side_effect=lambda name: None if name == missing else Mock()
+            with (
+                patch.object(audio, 'find_spec', side_effect=lambda name: None if name == missing else Mock()),
+                patch('ctypes.WinDLL', create=True),
             ):
-                assert audio.Backend().supported_features() == set()
-        with patch.object(audio, 'find_spec', return_value=Mock()):
+                assert audio.Backend().supported_features() == {'play_pause'}
+        with (
+            patch.object(audio, 'find_spec', return_value=Mock()),
+            patch('ctypes.WinDLL', create=True, side_effect=OSError('missing user32')),
+        ):
             assert audio.Backend().supported_features() == {'audio_playing', 'volume', 'mute'}
 
 
@@ -115,3 +119,36 @@ class TestStatus:
             assert dll.return_value.GetTickCount64.restype is C.c_uint64
         with patch('ctypes.WinDLL', create=True, side_effect=OSError('missing API')):
             assert status.Backend().supported_features() == set()
+
+
+class TestMediaKey:
+    def test_play_pause_key_events_and_native_layout(self):
+        with patch('ctypes.WinDLL', create=True) as dll:
+            native = dll.return_value.SendInput
+            native.return_value = 2
+            backend = audio.Backend()
+            backend.check('play_pause')
+            native.assert_not_called()
+            backend.execute('play_pause', 'PRESS')
+            count, events, size = native.call_args.args
+            assert count == 2
+            assert size == (40 if C.sizeof(C.c_void_p) == 8 else 28)
+            assert [event.type for event in events] == [1, 1]
+            assert [event.keyboard.key for event in events] == [0xB3, 0xB3]
+            assert [event.keyboard.flags for event in events] == [0, 2]
+            assert all(event.keyboard.scan == 0 and event.keyboard.extra == 0 for event in events)
+            assert native.argtypes == [C.c_uint32, C.POINTER(audio.Input), C.c_int]
+
+    @pytest.mark.parametrize('sent', [0, 1])
+    def test_failed_input_is_reported_and_partial_keypress_released(self, sent):
+        with patch('ctypes.WinDLL', create=True) as dll:
+            native = dll.return_value.SendInput
+            native.return_value = sent
+            with pytest.raises(RuntimeError, match='media play/pause key'):
+                audio.Backend().execute('play_pause', 'PRESS')
+            assert native.call_count == (2 if sent == 1 else 1)
+            if sent == 1:
+                count, events, size = native.call_args.args
+                assert count == 1
+                assert events[0].keyboard.flags == 2
+                assert events[0].keyboard.key == 0xB3

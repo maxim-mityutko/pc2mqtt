@@ -107,8 +107,8 @@ class TestEntity:
             key: json.loads(messages[f'{topic}/config'])
             for key, topic in self.integration.topics.items()
         }
-        assert len(configs) == 7
-        assert len({cfg['unique_id'] for cfg in configs.values()}) == 7
+        assert len(configs) == 8
+        assert len({cfg['unique_id'] for cfg in configs.values()}) == 8
         assert configs['volume']['max'] == 100
         assert configs['mute']['payload_on'] == 'ON'
         for key in ('user_idle_time', 'uptime'):
@@ -116,7 +116,7 @@ class TestEntity:
             assert configs[key]['value_template'] == '{{ value | float / 3600 }}'
             assert configs[key]['suggested_display_precision'] == 2
         assert 'state_topic' not in configs['lock_session']
-        assert self.client.subscribe.call_count == 4
+        assert self.client.subscribe.call_count == 5
         for key, cfg in configs.items():
             assert cfg['availability_mode'] == 'all'
             assert cfg['availability'][0] == {'topic': 'connection'}
@@ -152,6 +152,7 @@ class TestEntity:
             ('mute', b'\xff'),
             ('lock_session', b'OFF'),
             ('turn_off_displays', b'OFF'),
+            ('play_pause', b'OFF'),
         ]:
             assert self.integration.on_message(self.message(key, payload))
         for key, payload in [
@@ -159,6 +160,7 @@ class TestEntity:
             ('mute', b'ON'),
             ('lock_session', b'PRESS'),
             ('turn_off_displays', b'PRESS'),
+            ('play_pause', b'PRESS'),
         ]:
             self.integration.on_message(self.message(key, payload, retain=True))
         assert not self.integration.on_message(SimpleNamespace(topic='unknown'))
@@ -172,6 +174,7 @@ class TestEntity:
             ('mute', b'OFF', False),
             ('lock_session', b'PRESS', 'PRESS'),
             ('turn_off_displays', b'PRESS', 'PRESS'),
+            ('play_pause', b'PRESS', 'PRESS'),
         ]:
             self.integration.backend.execute.reset_mock()
             self.integration.on_message(self.message(key, payload))
